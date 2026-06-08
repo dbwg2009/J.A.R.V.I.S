@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#00050f"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="J.A.R.V.I.S."/>
+  <title>J.A.R.V.I.S.</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon.svg"/>
+  <link rel="icon" href="icon.svg"/>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+    html,body,#root{height:100%;width:100%;}
+    body{background:#00050f;color:#00d4ff;font-family:'Share Tech Mono',monospace;overflow:hidden;}
+    ::-webkit-scrollbar{width:3px;}
+    ::-webkit-scrollbar-track{background:#00050f;}
+    ::-webkit-scrollbar-thumb{background:#00d4ff44;border-radius:2px;}
+    @keyframes arcPulse{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+    @keyframes scanLine{0%{top:0}100%{top:100%}}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+    @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes wave0{0%{height:4px}100%{height:20px}}
+    @keyframes wave1{0%{height:8px}100%{height:16px}}
+    @keyframes wave2{0%{height:6px}100%{height:22px}}
+    @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 #ff444466}50%{box-shadow:0 0 0 10px #ff444400}}
+    @keyframes loginPulse{0%,100%{box-shadow:0 0 20px #00d4ff22}50%{box-shadow:0 0 40px #00d4ff44}}
+    input,textarea{background:#00d4ff0a;border:1px solid #00d4ff33;color:#00d4ff;padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:15px;outline:none;-webkit-appearance:none;border-radius:0;width:100%;}
+    input:focus,textarea:focus{border-color:#00d4ff88;background:#00d4ff0f;}
+    input::placeholder,textarea::placeholder{color:#00d4ff33;}
+    .act{background:#00d4ff1a;border:1px solid #00d4ff66;color:#00d4ff;padding:10px 14px;cursor:pointer;font-family:'Orbitron',monospace;font-size:10px;letter-spacing:1px;white-space:nowrap;border-radius:0;-webkit-appearance:none;}
+    .act:active{background:#00d4ff33;}
+    .act:disabled{opacity:.3;cursor:not-allowed;}
+    .act.green{border-color:#00ffaa;color:#00ffaa;background:#00ffaa11;}
+    .act.red{border-color:#ff4444;color:#ff4444;background:#ff444411;}
+    .act.amber{border-color:#ffaa00;color:#ffaa00;background:#ffaa0011;}
+    .mic{width:46px;height:46px;border-radius:50%;border:2px solid #00d4ff44;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;background:transparent;flex-shrink:0;transition:all .3s;}
+    .tog{background:transparent;border:1px solid #00d4ff44;color:#7ab8cc;padding:5px 11px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;border-radius:0;}
+    .tabBtn{flex:1;padding:11px 2px;background:transparent;border:none;border-bottom:2px solid transparent;color:#7ab8cc;cursor:pointer;font-family:'Orbitron',monospace;font-size:8px;letter-spacing:1px;transition:all .2s;}
+    .tabBtn.active{background:#00d4ff1a;border-bottom:2px solid #00d4ff;color:#00d4ff;}
+    .srow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #00d4ff11;}
+    .slabel{font-size:11px;color:#7ab8cc;letter-spacing:1px;}
+    .stitle{font-size:9px;color:#7ab8cc44;letter-spacing:2px;margin:18px 0 8px;text-transform:uppercase;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+const SYS_DEFAULT=`You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), Tony Stark's AI assistant. Highly intelligent, slightly witty, professional. Address user as "sir" or "ma'am". Refined British wit. Keep responses concise — 2-3 sentences when speaking aloud. Always stay in character.`;
+
+const api = {
+  get: (path) => fetch(path, {credentials:'include'}).then(r=>r.json()),
+  post: (path, body) => fetch(path, {method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()),
+  put:  (path, body) => fetch(path, {method:'PUT', credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()),
+  del:  (path, body) => fetch(path, {method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()),
+};
+
+function HexBg(){
+  const pts=[];
+  for(let i=0;i<80;i++){const col=i%10,row=Math.floor(i/10),x=col*80+(row%2)*40,y=row*70,p=Array.from({length:6}).map((_,j)=>{const a=Math.PI/180*(60*j-30);return`${x+30*Math.cos(a)},${y+30*Math.sin(a)}`;}).join(" ");pts.push(<polygon key={i} points={p} fill="none" stroke="#00d4ff" strokeWidth="0.5"/>);}
+  return <svg viewBox="0 0 800 600" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.04,pointerEvents:"none"}}>{pts}</svg>;
+}
+
+function Arc({pulse,listening,speaking}){
+  const c=listening?"#ff4444":speaking?"#00ffaa":"#00d4ff";
+  const sh=listening?"0 0 25px #ff4444,0 0 50px #aa0000":speaking?"0 0 25px #00ffaa,0 0 50px #004422":pulse?"0 0 25px #00d4ff,0 0 50px #0044aa":"0 0 12px #00d4ff";
+  return(<div style={{position:"relative",width:48,height:48,flexShrink:0}}>
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:`radial-gradient(circle,${c} 0%,#0066aa 40%,transparent 70%)`,animation:"arcPulse 2s ease-in-out infinite",boxShadow:sh,transition:"all .4s"}}/>
+    <div style={{position:"absolute",inset:7,borderRadius:"50%",border:`2px solid ${c}`,background:"radial-gradient(circle,#001a33 0%,#000d1a 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:12,height:12,borderRadius:"50%",background:c,boxShadow:`0 0 8px ${c}`,transition:"all .4s"}}/>
+    </div>
+  </div>);
+}
+
+function Wave({active,color}){
+  return(<div style={{display:"flex",alignItems:"center",gap:2,height:18}}>
+    {[0,1,2,3,4].map(i=><div key={i} style={{width:3,borderRadius:2,background:color||"#00d4ff",height:active?`${5+Math.sin(i*.9)*6+6}px`:"3px",animation:active?`wave${i%3} .${6+i%3}s ease-in-out infinite alternate`:"none",transition:"height .3s",opacity:active?1:.3}}/>)}
+  </div>);
+}
+
+function SBar({label,value,color}){
+  color=color||"#00d4ff";
+  return(<div style={{marginBottom:6}}>
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#7ab8cc",marginBottom:2,letterSpacing:1}}><span>{label}</span><span style={{color}}>{value}%</span></div>
+    <div style={{height:2,background:"#0a1a2a",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${value}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:2}}/></div>
+  </div>);
+}
+
+function LoginScreen({onLogin}){
+  const [username,setUsername]=useState("");
+  const [password,setPassword]=useState("");
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  async function handleLogin(e){
+    e.preventDefault();
+    if(!username||!password)return;
+    setLoading(true);setError("");
+    const data=await api.post("/api/login",{username,password});
+    setLoading(false);
+    if(data.ok){onLogin(data.user);}
+    else{setError(data.error||"Authentication failed");}
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"#00050f",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
+      <HexBg/>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none",opacity:.5}}/>
+      <div style={{width:"100%",maxWidth:380,animation:"loginPulse 3s ease-in-out infinite",border:"1px solid #00d4ff33",background:"#00050fee",padding:32,position:"relative",zIndex:1}}>
+        <div style={{position:"absolute",top:-1,left:-1,width:12,height:12,borderTop:"2px solid #00d4ff",borderLeft:"2px solid #00d4ff"}}/>
+        <div style={{position:"absolute",top:-1,right:-1,width:12,height:12,borderTop:"2px solid #00d4ff",borderRight:"2px solid #00d4ff"}}/>
+        <div style={{position:"absolute",bottom:-1,left:-1,width:12,height:12,borderBottom:"2px solid #00d4ff",borderLeft:"2px solid #00d4ff"}}/>
+        <div style={{position:"absolute",bottom:-1,right:-1,width:12,height:12,borderBottom:"2px solid #00d4ff",borderRight:"2px solid #00d4ff"}}/>
+
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900,letterSpacing:4,textShadow:"0 0 20px #00d4ff",marginBottom:6}}>J.A.R.V.I.S.</div>
+          <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:3}}>STARK INDUSTRIES — SECURE ACCESS</div>
+        </div>
+
+        <form onSubmit={handleLogin} style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div>
+            <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:2,marginBottom:6}}>AGENT ID</div>
+            <input value={username} onChange={e=>setUsername(e.target.value)} placeholder="Enter username" autoComplete="username"/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:2,marginBottom:6}}>ACCESS CODE</div>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Enter password" autoComplete="current-password"/>
+          </div>
+          {error&&<div style={{padding:"8px 12px",border:"1px solid #ff444444",background:"#ff444411",fontSize:11,color:"#ff4444",letterSpacing:1}}>{error}</div>}
+          <button className="act green" type="submit" disabled={loading||!username||!password} style={{width:"100%",padding:"14px",fontSize:11,letterSpacing:3,marginTop:4}}>
+            {loading?"AUTHENTICATING...":"INITIATE SEQUENCE"}
+          </button>
+        </form>
+
+        <div style={{marginTop:20,textAlign:"center",fontSize:9,color:"#7ab8cc33",letterSpacing:1}}>AES-256 ENCRYPTED · SESSION SECURED</div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [authUser,setAuthUser]=useState(null);
+  const [authChecked,setAuthChecked]=useState(false);
+  const [tab,setTab]=useState("chat");
+  const [msgs,setMsgs]=useState([{role:"assistant",content:"Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?"}]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [tasks,setTasks]=useState([]);
+  const [newTask,setNewTask]=useState("");
+  const [devs,setDevs]=useState([
+    {id:"lights",label:"Lab Lights",icon:"💡",on:true},
+    {id:"security",label:"Security",icon:"🛡️",on:true},
+    {id:"hvac",label:"Climate",icon:"❄️",on:false},
+    {id:"comms",label:"Comms Array",icon:"📡",on:false},
+  ]);
+  const [time,setTime]=useState(new Date());
+  const [pulse,setPulse]=useState(false);
+  const [webSearch,setWebSearch]=useState(false);
+  const [listening,setListening]=useState(false);
+  const [speaking,setSpeaking]=useState(false);
+  const [voiceOn,setVoiceOn]=useState(true);
+  const [transcript,setTranscript]=useState("");
+  const [sttOk,setSttOk]=useState(false);
+  const [drawer,setDrawer]=useState(false);
+  const [sysPrompt,setSysPrompt]=useState(SYS_DEFAULT);
+  const [sysInput,setSysInput]=useState(SYS_DEFAULT);
+  const [settingsSaved,setSettingsSaved]=useState(false);
+  const [adminUsers,setAdminUsers]=useState([]);
+  const [newUser,setNewUser]=useState({username:"",password:"",role:"user"});
+  const [adminMsg,setAdminMsg]=useState("");
+  const [pwChange,setPwChange]=useState({current:"",next:"",confirm:""});
+  const [pwMsg,setPwMsg]=useState("");
+
+  const endRef=useRef(null);
+  const recRef=useRef(null);
+  const synth=useRef(null);
+  const voiceRef=useRef(voiceOn);
+  useEffect(()=>{voiceRef.current=voiceOn;},[voiceOn]);
+
+  useEffect(()=>{
+    api.get("/api/me").then(data=>{
+      if(data.user){
+        setAuthUser(data.user);
+        loadUserData();
+      }
+      setAuthChecked(true);
+    }).catch(()=>setAuthChecked(true));
+  },[]);
+
+  async function loadUserData(){
+    const s=await api.get("/api/settings");
+    if(!s.error){
+      setVoiceOn(s.voice_on);
+      setWebSearch(s.web_search);
+      setSysPrompt(s.system_prompt||SYS_DEFAULT);
+      setSysInput(s.system_prompt||SYS_DEFAULT);
+    }
+    const t=await api.get("/api/tasks");
+    if(t.tasks) setTasks(t.tasks);
+    const c=await api.get("/api/chat");
+    if(c.messages?.length){
+      setMsgs(c.messages.map(m=>({role:m.role,content:m.content})));
+    }
+  }
+
+  function onLogin(user){
+    setAuthUser(user);
+    loadUserData();
+  }
+
+  async function handleLogout(){
+    await api.post("/api/logout",{});
+    setAuthUser(null);
+    setMsgs([{role:"assistant",content:"Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?"}]);
+    setTasks([]);
+  }
+
+  useEffect(()=>{synth.current=window.speechSynthesis;},[]);
+  useEffect(()=>{setSttOk(!!(window.SpeechRecognition||window.webkitSpeechRecognition));},[]);
+  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+  useEffect(()=>{if(loading)setPulse(true);else setTimeout(()=>setPulse(false),500);},[loading]);
+  useEffect(()=>{if(!voiceOn&&synth.current)synth.current.cancel();},[voiceOn]);
+
+  const speak=useCallback((text)=>{
+    if(!voiceRef.current||!synth.current)return;
+    synth.current.cancel();
+    const clean=text.replace(/[*_`#]/g,"").replace(/\n+/g," ").trim();
+    const utt=new SpeechSynthesisUtterance(clean);
+    const getVoice=()=>{const vs=synth.current.getVoices();return vs.find(v=>v.name.toLowerCase().includes("daniel")||v.lang==="en-GB")||vs.find(v=>v.lang.startsWith("en"))||vs[0];};
+    const v=getVoice();if(v)utt.voice=v;
+    utt.pitch=.85;utt.rate=.92;utt.volume=1;
+    utt.onstart=()=>setSpeaking(true);
+    utt.onend=()=>setSpeaking(false);
+    utt.onerror=()=>setSpeaking(false);
+    if(synth.current.getVoices().length===0){synth.current.onvoiceschanged=()=>{const v2=getVoice();if(v2)utt.voice=v2;synth.current.speak(utt);};}
+    else{synth.current.speak(utt);}
+  },[]);
+
+  useEffect(()=>{const t=setTimeout(()=>speak("Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?"),1200);return()=>clearTimeout(t);},[]);
+
+  function startListening(){
+    if(listening){recRef.current?.stop();return;}
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return;
+    synth.current?.cancel();
+    const rec=new SR();
+    rec.continuous=false;rec.interimResults=true;rec.lang="en-GB";
+    rec.onstart=()=>{setListening(true);setTranscript("");};
+    rec.onresult=(e)=>{const t=Array.from(e.results).map(r=>r[0].transcript).join("");setTranscript(t);setInput(t);};
+    rec.onend=()=>{setListening(false);setTranscript("");};
+    rec.onerror=()=>{setListening(false);setTranscript("");};
+    recRef.current=rec;rec.start();
+  }
+
+  async function send(override){
+    const text=(override||input).trim();
+    if(!text||loading)return;
+    const userMsg={role:"user",content:text};
+    setMsgs(prev=>[...prev,userMsg]);
+    setInput("");setLoading(true);
+    try{
+      const allMsgs=[...msgs,userMsg].map(m=>({role:m.role,content:m.content}));
+      const data=await api.post("/api/message",{messages:allMsgs,web_search:webSearch,system_prompt:sysPrompt});
+      if(data.error){throw new Error(data.error);}
+      setMsgs(prev=>[...prev,{role:"assistant",content:data.reply}]);
+      speak(data.reply);
+    }catch(e){
+      const err=`Systems disruption detected, sir. ${e.message||"Please contact your administrator."}`;
+      setMsgs(prev=>[...prev,{role:"assistant",content:err}]);
+      speak("Systems disruption detected, sir.");
+    }
+    setLoading(false);
+  }
+
+  useEffect(()=>{
+    if(!listening&&input.trim()&&transcript){const t=input;setTranscript("");setTimeout(()=>send(t),300);}
+  },[listening]);
+
+  async function addTask(){
+    if(!newTask.trim())return;
+    const data=await api.post("/api/tasks",{text:newTask.trim()});
+    if(data.ok){setTasks(p=>[...p,{id:data.id,text:newTask.trim(),done:false}]);setNewTask("");}
+  }
+  async function toggleTask(id,done){
+    await api.put("/api/tasks",{id,done:!done});
+    setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+  }
+  async function deleteTask(id){
+    await api.del("/api/tasks",{id});
+    setTasks(p=>p.filter(t=>t.id!==id));
+  }
+
+  const toggleDev=id=>setDevs(p=>p.map(d=>d.id===id?{...d,on:!d.on}:d));
+
+  async function saveSettings(){
+    await api.put("/api/settings",{voice_on:voiceOn,web_search:webSearch,system_prompt:sysInput});
+    setSysPrompt(sysInput);
+    setSettingsSaved(true);
+    setTimeout(()=>setSettingsSaved(false),2500);
+  }
+
+  async function loadAdminUsers(){
+    const data=await api.get("/api/users");
+    if(data.users) setAdminUsers(data.users);
+  }
+  useEffect(()=>{if(tab==="admin"&&authUser?.role==="admin")loadAdminUsers();},[tab]);
+
+  async function createUser(){
+    if(!newUser.username||!newUser.password){setAdminMsg("Username and password required");return;}
+    const data=await api.post("/api/users",newUser);
+    if(data.ok){setAdminMsg("User created");setNewUser({username:"",password:"",role:"user"});loadAdminUsers();}
+    else setAdminMsg(data.error||"Error");
+    setTimeout(()=>setAdminMsg(""),3000);
+  }
+
+  async function deleteUser(id){
+    const data=await api.del("/api/users",{id});
+    if(data.ok) loadAdminUsers();
+    else setAdminMsg(data.error||"Error");
+  }
+
+  async function changePassword(){
+    if(pwChange.next!==pwChange.confirm){setPwMsg("Passwords do not match");return;}
+    if(pwChange.next.length<4){setPwMsg("Password too short");return;}
+    const data=await api.put("/api/users",{id:null,password:pwChange.next});
+    if(data.ok){setPwMsg("Password updated");setPwChange({current:"",next:"",confirm:""});}
+    else setPwMsg(data.error||"Error");
+    setTimeout(()=>setPwMsg(""),3000);
+  }
+
+  async function clearChatHistory(){
+    await api.del("/api/chat",{});
+    setMsgs([{role:"assistant",content:"Chat history cleared, sir. Ready for new directives."}]);
+  }
+
+  const statusText=listening?"● LISTENING":speaking?"● SPEAKING":"● SYSTEMS NOMINAL";
+  const statusColor=listening?"#ff4444":speaking?"#00ffaa":"#7ab8cc";
+
+  const tabs=["chat","tasks","home","settings"];
+  if(authUser?.role==="admin") tabs.push("admin");
+
+  if(!authChecked) return(
+    <div style={{display:"flex",height:"100dvh",alignItems:"center",justifyContent:"center",background:"#00050f"}}>
+      <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,letterSpacing:3,color:"#00d4ff",animation:"blink 1s infinite"}}>INITIALISING...</div>
+    </div>
+  );
+
+  if(!authUser) return <LoginScreen onLogin={onLogin}/>;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"#00050f",position:"relative",overflow:"hidden"}}>
+      <HexBg/>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none",zIndex:11,opacity:.5}}/>
+
+      {drawer&&<div onClick={()=>setDrawer(false)} style={{position:"fixed",inset:0,background:"#00000099",zIndex:19}}/>}
+
+      <div style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:"#00050fff",borderRight:"1px solid #00d4ff33",zIndex:20,transform:drawer?"translateX(0)":"translateX(-100%)",transition:"transform .3s",padding:16,display:"flex",flexDirection:"column",gap:10,overflowY:"auto"}}>
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:3,color:"#00d4ff",borderBottom:"1px solid #00d4ff22",paddingBottom:10}}>SYSTEMS</div>
+        <SBar label="POWER CORE" value={94}/>
+        <SBar label="ARMOR" value={87} color="#00ffaa"/>
+        <SBar label="NEURAL LINK" value={100} color="#ffaa00"/>
+        <SBar label="THREAT LVL" value={12} color="#ff4444"/>
+        <div style={{borderTop:"1px solid #00d4ff22",paddingTop:10}}>
+          <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:2,marginBottom:10}}>AGENT</div>
+          <div style={{fontSize:12,color:"#00d4ff",letterSpacing:1,marginBottom:4}}>{authUser.username.toUpperCase()}</div>
+          <div style={{fontSize:9,color:authUser.role==="admin"?"#ffaa00":"#7ab8cc",letterSpacing:2,marginBottom:12}}>{authUser.role.toUpperCase()}</div>
+          <button className="act red" onClick={handleLogout} style={{width:"100%",fontSize:9}}>⏻ SIGN OUT</button>
+        </div>
+        <div style={{borderTop:"1px solid #00d4ff22",paddingTop:10}}>
+          <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:2,marginBottom:10}}>OPTIONS</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <span style={{fontSize:11,color:webSearch?"#00ffaa":"#7ab8cc"}}>WEB SEARCH</span>
+            <button className="tog" onClick={()=>setWebSearch(p=>!p)} style={{borderColor:webSearch?"#00ffaa":"#00d4ff44",color:webSearch?"#00ffaa":"#7ab8cc"}}>{webSearch?"ON":"OFF"}</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:voiceOn?"#ffaa00":"#7ab8cc"}}>VOICE OUT</span>
+            <button className="tog" onClick={()=>setVoiceOn(p=>!p)} style={{borderColor:voiceOn?"#ffaa00":"#00d4ff44",color:voiceOn?"#ffaa00":"#7ab8cc"}}>{voiceOn?"ON":"OFF"}</button>
+          </div>
+        </div>
+        <div style={{marginTop:"auto",borderTop:"1px solid #00d4ff22",paddingTop:10}}>
+          <div style={{fontSize:9,color:"#7ab8cc",letterSpacing:2}}>PENDING TASKS</div>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:36,fontWeight:900,color:"#00d4ff",textShadow:"0 0 15px #00d4ff"}}>{tasks.filter(t=>!t.done).length}</div>
+        </div>
+      </div>
+
+      <div style={{padding:"10px 14px",borderBottom:"1px solid #00d4ff22",display:"flex",alignItems:"center",gap:10,background:"#00050fdd",position:"relative",zIndex:10,flexShrink:0}}>
+        <button onClick={()=>setDrawer(p=>!p)} style={{background:"transparent",border:"1px solid #00d4ff33",color:"#00d4ff",width:36,height:36,cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:4}}>☰</button>
+        <Arc pulse={pulse} listening={listening} speaking={speaking}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:15,fontWeight:900,letterSpacing:3,textShadow:"0 0 12px #00d4ff"}}>J.A.R.V.I.S.</div>
+          <div style={{fontSize:8,color:statusColor,letterSpacing:2,marginTop:1}}>{statusText}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:14,fontWeight:700,textShadow:"0 0 8px #00d4ff"}}>{time.toLocaleTimeString("en-GB",{hour12:false})}</div>
+          <div style={{fontSize:8,color:"#7ab8cc",letterSpacing:1,marginTop:1}}>{time.toLocaleDateString("en-GB",{day:"numeric",month:"short"}).toUpperCase()}</div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",borderBottom:"1px solid #00d4ff22",flexShrink:0,background:"#00050faa"}}>
+        {tabs.map(t=>(<button key={t} className={`tabBtn${tab===t?" active":""}`} onClick={()=>setTab(t)}>{t==="chat"?"💬 CHAT":t==="tasks"?"✅ TASKS":t==="home"?"🏠 HOME":t==="admin"?"👤 ADMIN":"⚙ SET"}</button>))}
+      </div>
+
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",zIndex:5}}>
+        {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:10}}>{msgs.map((m,i)=>(<div key={i} style={{animation:"fadeInUp .25s ease",display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}><div style={{fontSize:8,color:"#7ab8cc",letterSpacing:2,marginBottom:3}}>{m.role==="user"?"// YOU":"// J.A.R.V.I.S"}</div><div style={{maxWidth:"88%",padding:"10px 13px",fontSize:14,lineHeight:1.55,background:m.role==="user"?"#00d4ff1a":"#001a2d",border:`1px solid ${m.role==="user"?"#00d4ff44":"#00d4ff22"}`,color:m.role==="user"?"#00d4ff":"#a0d8ef",position:"relative",borderRadius:3}}>{m.role==="assistant"&&<><div style={{position:"absolute",top:-1,left:-1,width:7,height:7,borderTop:"1px solid #00d4ff",borderLeft:"1px solid #00d4ff"}}/><div style={{position:"absolute",bottom:-1,right:-1,width:7,height:7,borderBottom:"1px solid #00d4ff",borderRight:"1px solid #00d4ff"}}/></>}{m.content}</div></div>))}{loading&&(<div style={{display:"flex",flexDirection:"column",alignItems:"flex-start"}}><div style={{fontSize:8,color:"#7ab8cc",letterSpacing:2,marginBottom:3}}>// J.A.R.V.I.S</div><div style={{padding:"10px 13px",border:"1px solid #00d4ff22",background:"#001a2d",color:"#00d4ff",fontSize:14,borderRadius:3}}><span style={{animation:"blink 1s infinite"}}>█</span> Processing...</div></div>)}{listening&&(<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",border:"1px solid #ff444444",background:"#ff444411",borderRadius:3}}><Wave active={true} color="#ff4444"/><span style={{fontSize:13,color:"#ff4444"}}>{input||"Listening..."}</span></div>)}<div ref={endRef}/></div><div style={{padding:"10px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,alignItems:"center",background:"#00050fcc",flexShrink:0}}>{sttOk&&(<button className="mic" onClick={startListening} disabled={loading} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff55",animation:listening?"micPulse 1s infinite":"none",background:listening?"#ff444411":"transparent"}}>🎤</button>)}<input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={listening?"Listening...":"Command, sir..."}/><button className="act" onClick={()=>send()} disabled={loading||!input.trim()}>SEND</button></div></div>)}
+        {tab==="tasks"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>{tasks.length===0&&<div style={{textAlign:"center",color:"#7ab8cc44",fontSize:12,letterSpacing:2,marginTop:40}}>NO ACTIVE OBJECTIVES</div>}{tasks.map(task=>(<div key={task.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 13px",border:`1px solid ${task.done?"#00d4ff11":"#00d4ff33"}`,background:task.done?"#00050f":"#00d4ff08",borderRadius:3,animation:"fadeInUp .25s ease"}}><div onClick={()=>toggleTask(task.id,task.done)} style={{width:20,height:20,border:`1px solid ${task.done?"#00ffaa":"#00d4ff"}`,background:task.done?"#00ffaa22":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,color:"#00ffaa",borderRadius:3}}>{task.done?"✓":""}</div><span style={{flex:1,fontSize:14,color:task.done?"#7ab8cc":"#a0d8ef",textDecoration:task.done?"line-through":"none"}}>{task.text}</span><button onClick={()=>deleteTask(task.id)} style={{background:"transparent",border:"1px solid #ff444433",color:"#ff4444",padding:"4px 10px",cursor:"pointer",fontSize:16,borderRadius:3}}>×</button></div>))}</div><div style={{padding:"10px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="New objective..."/><button className="act" onClick={addTask}>ADD</button></div></div>)}
+        {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{border:`1px solid ${d.on?"#00d4ff44":"#00d4ff18"}`,background:d.on?"#00d4ff0d":"#00050f",padding:16,cursor:"pointer",transition:"all .3s",borderRadius:4,animation:"fadeInUp .25s ease"}}><div style={{fontSize:28,marginBottom:8}}>{d.icon}</div><div style={{fontSize:10,letterSpacing:2,color:d.on?"#00d4ff":"#7ab8cc",marginBottom:6}}>{d.label.toUpperCase()}</div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:d.on?"#00ffaa":"#333",boxShadow:d.on?"0 0 6px #00ffaa":"none",transition:"all .3s"}}/><span style={{fontSize:9,color:d.on?"#00ffaa":"#555",letterSpacing:2}}>{d.on?"ONLINE":"OFFLINE"}</span></div></div>))}</div><div style={{padding:14,border:"1px solid #00d4ff22",background:"#00050f",borderRadius:4}}><div style={{fontSize:9,letterSpacing:3,color:"#7ab8cc",marginBottom:10}}>FACILITY OVERVIEW</div><div style={{display:"flex",gap:20}}><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#00ffaa",textShadow:"0 0 12px #00ffaa"}}>{devs.filter(d=>d.on).length}</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>ONLINE</div></div><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#ff4444",textShadow:"0 0 12px #ff4444"}}>{devs.filter(d=>!d.on).length}</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>OFFLINE</div></div><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#ffaa00",textShadow:"0 0 12px #ffaa00"}}>72°F</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>TEMP</div></div></div></div></div>)}
+        {tab==="settings"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>SYSTEM PERSONALITY</div><textarea value={sysInput} onChange={e=>setSysInput(e.target.value)} rows={6} style={{resize:"vertical",fontSize:12,lineHeight:1.5}}/><div style={{display:"flex",gap:8,marginTop:10}}><button className="act green" onClick={saveSettings} style={{flex:1}}>💾 SAVE</button><button className="act" onClick={()=>setSysInput(SYS_DEFAULT)}>RESET</button></div>{settingsSaved&&<div style={{marginTop:10,padding:"8px 12px",border:"1px solid #00ffaa44",background:"#00ffaa11",borderRadius:3,fontSize:11,color:"#00ffaa"}}>✓ Settings saved, sir.</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>CHANGE PASSWORD</div><div style={{display:"flex",flexDirection:"column",gap:8}}><input type="password" placeholder="New password" value={pwChange.next} onChange={e=>setPwChange(p=>({...p,next:e.target.value}))}/><input type="password" placeholder="Confirm password" value={pwChange.confirm} onChange={e=>setPwChange(p=>({...p,confirm:e.target.value}))}/><button className="act amber" onClick={changePassword}>UPDATE PASSWORD</button>{pwMsg&&<div style={{fontSize:11,color:pwMsg.includes("updated")?"#00ffaa":"#ff4444",letterSpacing:1}}>{pwMsg}</div>}</div></div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>PREFERENCES</div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><span style={{fontSize:11,color:"#7ab8cc"}}>VOICE OUTPUT</span><button className="tog" onClick={()=>setVoiceOn(p=>!p)} style={{borderColor:voiceOn?"#ffaa00":"#00d4ff44",color:voiceOn?"#ffaa00":"#7ab8cc"}}>{voiceOn?"ON":"OFF"}</button></div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}><span style={{fontSize:11,color:"#7ab8cc"}}>WEB SEARCH</span><button className="tog" onClick={()=>setWebSearch(p=>!p)} style={{borderColor:webSearch?"#00ffaa":"#00d4ff44",color:webSearch?"#00ffaa":"#7ab8cc"}}>{webSearch?"ON":"OFF"}</button></div><button className="act" onClick={saveSettings} style={{width:"100%",fontSize:9}}>💾 SAVE PREFERENCES</button></div><div style={{padding:16,border:"1px solid #ff444422",background:"#0a0005",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ff4444",marginBottom:12}}>DANGER ZONE</div><button className="act red" onClick={clearChatHistory} style={{width:"100%",fontSize:9}}>🗑 CLEAR CHAT HISTORY</button></div></div>)}
+        {tab==="admin"&&authUser?.role==="admin"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ffaa00",marginBottom:12}}>CREATE USER</div><div style={{display:"flex",flexDirection:"column",gap:8}}><input placeholder="Username" value={newUser.username} onChange={e=>setNewUser(p=>({...p,username:e.target.value}))}/><input type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser(p=>({...p,password:e.target.value}))}/><div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:"#7ab8cc",letterSpacing:1}}>ROLE:</span><button className="tog" onClick={()=>setNewUser(p=>({...p,role:p.role==="admin"?"user":"admin"}))} style={{borderColor:newUser.role==="admin"?"#ffaa00":"#00d4ff44",color:newUser.role==="admin"?"#ffaa00":"#7ab8cc"}}>{newUser.role.toUpperCase()}</button></div><button className="act green" onClick={createUser}>+ CREATE AGENT</button>{adminMsg&&<div style={{fontSize:11,color:adminMsg.includes("created")?"#00ffaa":"#ff4444",letterSpacing:1}}>{adminMsg}</div>}</div></div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ffaa00",marginBottom:12}}>REGISTERED AGENTS ({adminUsers.length})</div>{adminUsers.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid #00d4ff11"}}><div style={{width:7,height:7,borderRadius:"50%",background:u.role==="admin"?"#ffaa00":"#00ffaa",boxShadow:u.role==="admin"?"0 0 6px #ffaa00":"0 0 6px #00ffaa",flexShrink:0}}/><span style={{flex:1,fontSize:12,color:"#a0d8ef",letterSpacing:1}}>{u.username}</span><span style={{fontSize:9,color:u.role==="admin"?"#ffaa00":"#7ab8cc",letterSpacing:2}}>{u.role.toUpperCase()}</span>{u.username!==authUser.username&&(<button onClick={()=>deleteUser(u.id)} style={{background:"transparent",border:"1px solid #ff444433",color:"#ff4444",padding:"3px 8px",cursor:"pointer",fontSize:12,borderRadius:3}}>×</button>)}</div>))}</div></div>)}
+      </div>
+
+      <div style={{padding:"5px 14px",borderTop:"1px solid #00d4ff22",display:"flex",justifyContent:"space-between",fontSize:8,color:"#7ab8cc33",letterSpacing:2,background:"#00050fcc",flexShrink:0}}>
+        <span>STARK INDUSTRIES</span><span>{authUser?.username?.toUpperCase()}</span><span>PWA v9.0</span>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));}</script>
+</body>
+</html>
