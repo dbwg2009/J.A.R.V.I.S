@@ -29,18 +29,26 @@
     @keyframes wave2{0%{height:6px}100%{height:22px}}
     @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 #ff444466}50%{box-shadow:0 0 0 10px #ff444400}}
     @keyframes loginPulse{0%,100%{box-shadow:0 0 20px #00d4ff22}50%{box-shadow:0 0 40px #00d4ff44}}
-    input,textarea{background:#00d4ff0a;border:1px solid #00d4ff33;color:#00d4ff;padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:15px;outline:none;-webkit-appearance:none;border-radius:0;width:100%;}
+    input,textarea{background:#00d4ff0a;border:1px solid #00d4ff33;color:#00d4ff;padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:15px;outline:none;-webkit-appearance:none;border-radius:2px;}
     input:focus,textarea:focus{border-color:#00d4ff88;background:#00d4ff0f;}
     input::placeholder,textarea::placeholder{color:#00d4ff33;}
-    .act{background:#00d4ff1a;border:1px solid #00d4ff66;color:#00d4ff;padding:10px 14px;cursor:pointer;font-family:'Orbitron',monospace;font-size:10px;letter-spacing:1px;white-space:nowrap;border-radius:0;-webkit-appearance:none;}
+    .act{background:#00d4ff1a;border:1px solid #00d4ff66;color:#00d4ff;padding:10px 14px;cursor:pointer;font-family:'Orbitron',monospace;font-size:10px;letter-spacing:1px;white-space:nowrap;border-radius:2px;transition:all .2s;}
+    .act:hover{background:#00d4ff33;}
     .act:active{background:#00d4ff33;}
     .act:disabled{opacity:.3;cursor:not-allowed;}
     .act.green{border-color:#00ffaa;color:#00ffaa;background:#00ffaa11;}
+    .act.green:hover{background:#00ffaa22;}
     .act.red{border-color:#ff4444;color:#ff4444;background:#ff444411;}
+    .act.red:hover{background:#ff444422;}
     .act.amber{border-color:#ffaa00;color:#ffaa00;background:#ffaa0011;}
-    .mic{width:46px;height:46px;border-radius:50%;border:2px solid #00d4ff44;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;background:transparent;flex-shrink:0;transition:all .3s;}
-    .tog{background:transparent;border:1px solid #00d4ff44;color:#7ab8cc;padding:5px 11px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;border-radius:0;}
+    .act.amber:hover{background:#ffaa0022;}
+    .mic{width:46px;height:46px;border-radius:50%;border:2px solid #00d4ff44;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;background:transparent;flex-shrink:0;transition:all .2s;}
+    .mic:hover{border-color:#00d4ff88;}
+    .mic.listening{border-color:#ff4444;box-shadow:0 0 15px #ff444466;}
+    .tog{background:transparent;border:1px solid #00d4ff44;color:#7ab8cc;padding:5px 11px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;border-radius:0;transition:all .2s;}
+    .tog:hover{border-color:#00d4ff66;}
     .tabBtn{flex:1;padding:11px 2px;background:transparent;border:none;border-bottom:2px solid transparent;color:#7ab8cc;cursor:pointer;font-family:'Orbitron',monospace;font-size:8px;letter-spacing:1px;transition:all .2s;}
+    .tabBtn:hover{color:#00d4ff;}
     .tabBtn.active{background:#00d4ff1a;border-bottom:2px solid #00d4ff;color:#00d4ff;}
     .srow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #00d4ff11;}
     .slabel{font-size:11px;color:#7ab8cc;letter-spacing:1px;}
@@ -55,7 +63,7 @@
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
-const SYS_DEFAULT=`You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), Tony Stark's AI assistant. Highly intelligent, slightly witty, professional. Address user as "sir" or "ma'am". Refined British wit. Keep responses concise — 2-3 sentences when speaking aloud. Always stay in character.`;
+const SYS_DEFAULT=`You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), Tony Stark's AI assistant. Highly intelligent, slightly witty, professional. Address user as "sir" or "ma'am". Refined British accent. Always maintain professionalism and a dry sense of humour.`;
 
 const api = {
   get: (path) => fetch(path, {credentials:'include'}).then(r=>r.json()),
@@ -66,7 +74,7 @@ const api = {
 
 function HexBg(){
   const pts=[];
-  for(let i=0;i<80;i++){const col=i%10,row=Math.floor(i/10),x=col*80+(row%2)*40,y=row*70,p=Array.from({length:6}).map((_,j)=>{const a=Math.PI/180*(60*j-30);return`${x+30*Math.cos(a)},${y+30*Math.sin(a)}`;}).join(" ");pts.push(<polygon key={i} points={p} fill="none" stroke="#00d4ff" strokeWidth="0.5"/>);}
+  for(let i=0;i<80;i++){const col=i%10,row=Math.floor(i/10),x=col*80+(row%2)*40,y=row*70,p=Array.from({length:6}).map((_,j)=>{const a=Math.PI/180*(60*j-30);return`${x+30*Math.cos(a)},${y+30*Math.sin(a)}`}).join(' ');pts.push(<polygon key={i} points={p} fill="none" stroke="#00d4ff" strokeWidth="0.5"/>);}
   return <svg viewBox="0 0 800 600" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.04,pointerEvents:"none"}}>{pts}</svg>;
 }
 
@@ -74,7 +82,7 @@ function Arc({pulse,listening,speaking}){
   const c=listening?"#ff4444":speaking?"#00ffaa":"#00d4ff";
   const sh=listening?"0 0 25px #ff4444,0 0 50px #aa0000":speaking?"0 0 25px #00ffaa,0 0 50px #004422":pulse?"0 0 25px #00d4ff,0 0 50px #0044aa":"0 0 12px #00d4ff";
   return(<div style={{position:"relative",width:48,height:48,flexShrink:0}}>
-    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:`radial-gradient(circle,${c} 0%,#0066aa 40%,transparent 70%)`,animation:"arcPulse 2s ease-in-out infinite",boxShadow:sh,transition:"all .4s"}}/>
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:`radial-gradient(circle,${c} 0%,#0066aa 40%,transparent 70%)`,animation:"arcPulse 2s ease-in-out infinite",boxShadow:sh,transform:"scale(1)"}}/>
     <div style={{position:"absolute",inset:7,borderRadius:"50%",border:`2px solid ${c}`,background:"radial-gradient(circle,#001a33 0%,#000d1a 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:12,height:12,borderRadius:"50%",background:c,boxShadow:`0 0 8px ${c}`,transition:"all .4s"}}/>
     </div>
@@ -83,7 +91,7 @@ function Arc({pulse,listening,speaking}){
 
 function Wave({active,color}){
   return(<div style={{display:"flex",alignItems:"center",gap:2,height:18}}>
-    {[0,1,2,3,4].map(i=><div key={i} style={{width:3,borderRadius:2,background:color||"#00d4ff",height:active?`${5+Math.sin(i*.9)*6+6}px`:"3px",animation:active?`wave${i%3} .${6+i%3}s ease-in-out infinite alternate`:"none",transition:"height .3s",opacity:active?1:.3}}/>)}
+    {[0,1,2,3,4].map(i=><div key={i} style={{width:3,borderRadius:2,background:color||"#00d4ff",height:active?`${5+Math.sin(i*.9)*6+6}px`:"3px",animation:active?`wave${i%3} .${6+i%3}s ease-in-out infinite`:"none"}}/>)}
   </div>);
 }
 
@@ -114,7 +122,7 @@ function LoginScreen({onLogin}){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"#00050f",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
       <HexBg/>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none",opacity:.5}}/>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none"}}/>
       <div style={{width:"100%",maxWidth:380,animation:"loginPulse 3s ease-in-out infinite",border:"1px solid #00d4ff33",background:"#00050fee",padding:32,position:"relative",zIndex:1}}>
         <div style={{position:"absolute",top:-1,left:-1,width:12,height:12,borderTop:"2px solid #00d4ff",borderLeft:"2px solid #00d4ff"}}/>
         <div style={{position:"absolute",top:-1,right:-1,width:12,height:12,borderTop:"2px solid #00d4ff",borderRight:"2px solid #00d4ff"}}/>
@@ -182,9 +190,7 @@ function App(){
 
   const endRef=useRef(null);
   const recRef=useRef(null);
-  const synth=useRef(null);
-  const voiceRef=useRef(voiceOn);
-  useEffect(()=>{voiceRef.current=voiceOn;},[voiceOn]);
+  const audioRef=useRef(null);
 
   useEffect(()=>{
     api.get("/api/me").then(data=>{
@@ -224,27 +230,27 @@ function App(){
     setTasks([]);
   }
 
-  useEffect(()=>{synth.current=window.speechSynthesis;},[]);
   useEffect(()=>{setSttOk(!!(window.SpeechRecognition||window.webkitSpeechRecognition));},[]);
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
   useEffect(()=>{if(loading)setPulse(true);else setTimeout(()=>setPulse(false),500);},[loading]);
-  useEffect(()=>{if(!voiceOn&&synth.current)synth.current.cancel();},[voiceOn]);
 
-  const speak=useCallback((text)=>{
-    if(!voiceRef.current||!synth.current)return;
-    synth.current.cancel();
-    const clean=text.replace(/[*_`#]/g,"").replace(/\n+/g," ").trim();
-    const utt=new SpeechSynthesisUtterance(clean);
-    const getVoice=()=>{const vs=synth.current.getVoices();return vs.find(v=>v.name.toLowerCase().includes("daniel")||v.lang==="en-GB")||vs.find(v=>v.lang.startsWith("en"))||vs[0];};
-    const v=getVoice();if(v)utt.voice=v;
-    utt.pitch=.85;utt.rate=.92;utt.volume=1;
-    utt.onstart=()=>setSpeaking(true);
-    utt.onend=()=>setSpeaking(false);
-    utt.onerror=()=>setSpeaking(false);
-    if(synth.current.getVoices().length===0){synth.current.onvoiceschanged=()=>{const v2=getVoice();if(v2)utt.voice=v2;synth.current.speak(utt);};}
-    else{synth.current.speak(utt);}
-  },[]);
+  const speak=useCallback(async(text)=>{
+    if(!voiceOn)return;
+    setSpeaking(true);
+    try{
+      const data=await api.post("/api/tts",{text,language_code:"en-GB",pitch:0.85,speaking_rate:0.92});
+      if(data.error)throw new Error(data.error);
+      if(!audioRef.current)audioRef.current=new Audio();
+      audioRef.current.src=`data:audio/mp3;base64,${data.audioContent}`;
+      audioRef.current.onended=()=>setSpeaking(false);
+      audioRef.current.onerror=()=>setSpeaking(false);
+      await audioRef.current.play();
+    }catch(e){
+      console.error("TTS failed:",e.message);
+      setSpeaking(false);
+    }
+  },[voiceOn]);
 
   useEffect(()=>{const t=setTimeout(()=>speak("Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?"),1200);return()=>clearTimeout(t);},[]);
 
@@ -252,7 +258,7 @@ function App(){
     if(listening){recRef.current?.stop();return;}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR)return;
-    synth.current?.cancel();
+    if(audioRef.current)audioRef.current.pause();
     const rec=new SR();
     rec.continuous=false;rec.interimResults=true;rec.lang="en-GB";
     rec.onstart=()=>{setListening(true);setTranscript("");};
@@ -360,11 +366,11 @@ function App(){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"#00050f",position:"relative",overflow:"hidden"}}>
       <HexBg/>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none",zIndex:11,opacity:.5}}/>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,#00d4ff,transparent)",animation:"scanLine 5s linear infinite",pointerEvents:"none"}}/>
 
       {drawer&&<div onClick={()=>setDrawer(false)} style={{position:"fixed",inset:0,background:"#00000099",zIndex:19}}/>}
 
-      <div style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:"#00050fff",borderRight:"1px solid #00d4ff33",zIndex:20,transform:drawer?"translateX(0)":"translateX(-100%)",transition:"transform .3s",padding:16,display:"flex",flexDirection:"column",gap:10,overflowY:"auto"}}>
+      <div style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:"#00050fff",borderRight:"1px solid #00d4ff33",zIndex:20,transform:drawer?"translateX(0)":"translateX(-100%)",transition:"transform .3s",overflowY:"auto",padding:16}}>
         <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:3,color:"#00d4ff",borderBottom:"1px solid #00d4ff22",paddingBottom:10}}>SYSTEMS</div>
         <SBar label="POWER CORE" value={94}/>
         <SBar label="ARMOR" value={87} color="#00ffaa"/>
@@ -394,7 +400,7 @@ function App(){
       </div>
 
       <div style={{padding:"10px 14px",borderBottom:"1px solid #00d4ff22",display:"flex",alignItems:"center",gap:10,background:"#00050fdd",position:"relative",zIndex:10,flexShrink:0}}>
-        <button onClick={()=>setDrawer(p=>!p)} style={{background:"transparent",border:"1px solid #00d4ff33",color:"#00d4ff",width:36,height:36,cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:4}}>☰</button>
+        <button onClick={()=>setDrawer(p=>!p)} style={{background:"transparent",border:"1px solid #00d4ff33",color:"#00d4ff",width:36,height:36,cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:2,transition:"all .2s"}}/>
         <Arc pulse={pulse} listening={listening} speaking={speaking}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontFamily:"'Orbitron',monospace",fontSize:15,fontWeight:900,letterSpacing:3,textShadow:"0 0 12px #00d4ff"}}>J.A.R.V.I.S.</div>
@@ -407,15 +413,15 @@ function App(){
       </div>
 
       <div style={{display:"flex",borderBottom:"1px solid #00d4ff22",flexShrink:0,background:"#00050faa"}}>
-        {tabs.map(t=>(<button key={t} className={`tabBtn${tab===t?" active":""}`} onClick={()=>setTab(t)}>{t==="chat"?"💬 CHAT":t==="tasks"?"✅ TASKS":t==="home"?"🏠 HOME":t==="admin"?"👤 ADMIN":"⚙ SET"}</button>))}
+        {tabs.map(t=>(<button key={t} className={`tabBtn${tab===t?" active":""}`} onClick={()=>setTab(t)}>{t==="chat"?"💬 CHAT":t==="tasks"?"✅ TASKS":t==="home"?"🏠 HOME":t==="admin"?"👤 ADMIN":"⚙️ SETTINGS"}</button>))}
       </div>
 
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",zIndex:5}}>
-        {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:10}}>{msgs.map((m,i)=>(<div key={i} style={{animation:"fadeInUp .25s ease",display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}><div style={{fontSize:8,color:"#7ab8cc",letterSpacing:2,marginBottom:3}}>{m.role==="user"?"// YOU":"// J.A.R.V.I.S"}</div><div style={{maxWidth:"88%",padding:"10px 13px",fontSize:14,lineHeight:1.55,background:m.role==="user"?"#00d4ff1a":"#001a2d",border:`1px solid ${m.role==="user"?"#00d4ff44":"#00d4ff22"}`,color:m.role==="user"?"#00d4ff":"#a0d8ef",position:"relative",borderRadius:3}}>{m.role==="assistant"&&<><div style={{position:"absolute",top:-1,left:-1,width:7,height:7,borderTop:"1px solid #00d4ff",borderLeft:"1px solid #00d4ff"}}/><div style={{position:"absolute",bottom:-1,right:-1,width:7,height:7,borderBottom:"1px solid #00d4ff",borderRight:"1px solid #00d4ff"}}/></>}{m.content}</div></div>))}{loading&&(<div style={{display:"flex",flexDirection:"column",alignItems:"flex-start"}}><div style={{fontSize:8,color:"#7ab8cc",letterSpacing:2,marginBottom:3}}>// J.A.R.V.I.S</div><div style={{padding:"10px 13px",border:"1px solid #00d4ff22",background:"#001a2d",color:"#00d4ff",fontSize:14,borderRadius:3}}><span style={{animation:"blink 1s infinite"}}>█</span> Processing...</div></div>)}{listening&&(<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",border:"1px solid #ff444444",background:"#ff444411",borderRadius:3}}><Wave active={true} color="#ff4444"/><span style={{fontSize:13,color:"#ff4444"}}>{input||"Listening..."}</span></div>)}<div ref={endRef}/></div><div style={{padding:"10px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,alignItems:"center",background:"#00050fcc",flexShrink:0}}>{sttOk&&(<button className="mic" onClick={startListening} disabled={loading} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff55",animation:listening?"micPulse 1s infinite":"none",background:listening?"#ff444411":"transparent"}}>🎤</button>)}<input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={listening?"Listening...":"Command, sir..."}/><button className="act" onClick={()=>send()} disabled={loading||!input.trim()}>SEND</button></div></div>)}
-        {tab==="tasks"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>{tasks.length===0&&<div style={{textAlign:"center",color:"#7ab8cc44",fontSize:12,letterSpacing:2,marginTop:40}}>NO ACTIVE OBJECTIVES</div>}{tasks.map(task=>(<div key={task.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 13px",border:`1px solid ${task.done?"#00d4ff11":"#00d4ff33"}`,background:task.done?"#00050f":"#00d4ff08",borderRadius:3,animation:"fadeInUp .25s ease"}}><div onClick={()=>toggleTask(task.id,task.done)} style={{width:20,height:20,border:`1px solid ${task.done?"#00ffaa":"#00d4ff"}`,background:task.done?"#00ffaa22":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,color:"#00ffaa",borderRadius:3}}>{task.done?"✓":""}</div><span style={{flex:1,fontSize:14,color:task.done?"#7ab8cc":"#a0d8ef",textDecoration:task.done?"line-through":"none"}}>{task.text}</span><button onClick={()=>deleteTask(task.id)} style={{background:"transparent",border:"1px solid #ff444433",color:"#ff4444",padding:"4px 10px",cursor:"pointer",fontSize:16,borderRadius:3}}>×</button></div>))}</div><div style={{padding:"10px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="New objective..."/><button className="act" onClick={addTask}>ADD</button></div></div>)}
-        {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{border:`1px solid ${d.on?"#00d4ff44":"#00d4ff18"}`,background:d.on?"#00d4ff0d":"#00050f",padding:16,cursor:"pointer",transition:"all .3s",borderRadius:4,animation:"fadeInUp .25s ease"}}><div style={{fontSize:28,marginBottom:8}}>{d.icon}</div><div style={{fontSize:10,letterSpacing:2,color:d.on?"#00d4ff":"#7ab8cc",marginBottom:6}}>{d.label.toUpperCase()}</div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:d.on?"#00ffaa":"#333",boxShadow:d.on?"0 0 6px #00ffaa":"none",transition:"all .3s"}}/><span style={{fontSize:9,color:d.on?"#00ffaa":"#555",letterSpacing:2}}>{d.on?"ONLINE":"OFFLINE"}</span></div></div>))}</div><div style={{padding:14,border:"1px solid #00d4ff22",background:"#00050f",borderRadius:4}}><div style={{fontSize:9,letterSpacing:3,color:"#7ab8cc",marginBottom:10}}>FACILITY OVERVIEW</div><div style={{display:"flex",gap:20}}><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#00ffaa",textShadow:"0 0 12px #00ffaa"}}>{devs.filter(d=>d.on).length}</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>ONLINE</div></div><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#ff4444",textShadow:"0 0 12px #ff4444"}}>{devs.filter(d=>!d.on).length}</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>OFFLINE</div></div><div><div style={{fontFamily:"'Orbitron',monospace",fontSize:30,fontWeight:900,color:"#ffaa00",textShadow:"0 0 12px #ffaa00"}}>72°F</div><div style={{fontSize:9,color:"#7ab8cc",letterSpacing:1}}>TEMP</div></div></div></div></div>)}
-        {tab==="settings"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>SYSTEM PERSONALITY</div><textarea value={sysInput} onChange={e=>setSysInput(e.target.value)} rows={6} style={{resize:"vertical",fontSize:12,lineHeight:1.5}}/><div style={{display:"flex",gap:8,marginTop:10}}><button className="act green" onClick={saveSettings} style={{flex:1}}>💾 SAVE</button><button className="act" onClick={()=>setSysInput(SYS_DEFAULT)}>RESET</button></div>{settingsSaved&&<div style={{marginTop:10,padding:"8px 12px",border:"1px solid #00ffaa44",background:"#00ffaa11",borderRadius:3,fontSize:11,color:"#00ffaa"}}>✓ Settings saved, sir.</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>CHANGE PASSWORD</div><div style={{display:"flex",flexDirection:"column",gap:8}}><input type="password" placeholder="New password" value={pwChange.next} onChange={e=>setPwChange(p=>({...p,next:e.target.value}))}/><input type="password" placeholder="Confirm password" value={pwChange.confirm} onChange={e=>setPwChange(p=>({...p,confirm:e.target.value}))}/><button className="act amber" onClick={changePassword}>UPDATE PASSWORD</button>{pwMsg&&<div style={{fontSize:11,color:pwMsg.includes("updated")?"#00ffaa":"#ff4444",letterSpacing:1}}>{pwMsg}</div>}</div></div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#00d4ff",marginBottom:12}}>PREFERENCES</div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><span style={{fontSize:11,color:"#7ab8cc"}}>VOICE OUTPUT</span><button className="tog" onClick={()=>setVoiceOn(p=>!p)} style={{borderColor:voiceOn?"#ffaa00":"#00d4ff44",color:voiceOn?"#ffaa00":"#7ab8cc"}}>{voiceOn?"ON":"OFF"}</button></div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}><span style={{fontSize:11,color:"#7ab8cc"}}>WEB SEARCH</span><button className="tog" onClick={()=>setWebSearch(p=>!p)} style={{borderColor:webSearch?"#00ffaa":"#00d4ff44",color:webSearch?"#00ffaa":"#7ab8cc"}}>{webSearch?"ON":"OFF"}</button></div><button className="act" onClick={saveSettings} style={{width:"100%",fontSize:9}}>💾 SAVE PREFERENCES</button></div><div style={{padding:16,border:"1px solid #ff444422",background:"#0a0005",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ff4444",marginBottom:12}}>DANGER ZONE</div><button className="act red" onClick={clearChatHistory} style={{width:"100%",fontSize:9}}>🗑 CLEAR CHAT HISTORY</button></div></div>)}
-        {tab==="admin"&&authUser?.role==="admin"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ffaa00",marginBottom:12}}>CREATE USER</div><div style={{display:"flex",flexDirection:"column",gap:8}}><input placeholder="Username" value={newUser.username} onChange={e=>setNewUser(p=>({...p,username:e.target.value}))}/><input type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser(p=>({...p,password:e.target.value}))}/><div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:"#7ab8cc",letterSpacing:1}}>ROLE:</span><button className="tog" onClick={()=>setNewUser(p=>({...p,role:p.role==="admin"?"user":"admin"}))} style={{borderColor:newUser.role==="admin"?"#ffaa00":"#00d4ff44",color:newUser.role==="admin"?"#ffaa00":"#7ab8cc"}}>{newUser.role.toUpperCase()}</button></div><button className="act green" onClick={createUser}>+ CREATE AGENT</button>{adminMsg&&<div style={{fontSize:11,color:adminMsg.includes("created")?"#00ffaa":"#ff4444",letterSpacing:1}}>{adminMsg}</div>}</div></div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,letterSpacing:2,color:"#ffaa00",marginBottom:12}}>REGISTERED AGENTS ({adminUsers.length})</div>{adminUsers.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid #00d4ff11"}}><div style={{width:7,height:7,borderRadius:"50%",background:u.role==="admin"?"#ffaa00":"#00ffaa",boxShadow:u.role==="admin"?"0 0 6px #ffaa00":"0 0 6px #00ffaa",flexShrink:0}}/><span style={{flex:1,fontSize:12,color:"#a0d8ef",letterSpacing:1}}>{u.username}</span><span style={{fontSize:9,color:u.role==="admin"?"#ffaa00":"#7ab8cc",letterSpacing:2}}>{u.role.toUpperCase()}</span>{u.username!==authUser.username&&(<button onClick={()=>deleteUser(u.id)} style={{background:"transparent",border:"1px solid #ff444433",color:"#ff4444",padding:"3px 8px",cursor:"pointer",fontSize:12,borderRadius:3}}>×</button>)}</div>))}</div></div>)}
+        {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:8}}>{msgs.map((m,i)=>(<div key={i} style={{padding:"10px 14px",background:m.role==="user"?"#00d4ff0a":"#00ffaa0a",border:`1px solid ${m.role==="user"?"#00d4ff33":"#00ffaa33"}`,borderRadius:2,animation:"fadeInUp .3s"}}><div style={{fontSize:9,color:m.role==="user"?"#00d4ff":"#00ffaa",letterSpacing:1,marginBottom:4}}>{m.role.toUpperCase()}</div><div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{m.content}</div></div>))}<div ref={endRef}/></div><div style={{padding:"8px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={input} onChange={e=>setInput(e.target.value)} placeholder="Command..." onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} style={{flex:1}}/><button className="mic" onClick={startListening} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff"}} title={sttOk?"Hold to listen":"Speech recognition unavailable"}>{listening?"🎙️":"🎤"}</button><button className="act green" onClick={()=>send()} disabled={loading||!input.trim()}>{loading?"⏳":"SEND"}</button></div></div>)}
+        {tab==="tasks"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>{tasks.map(t=>(<div key={t.id} style={{padding:12,border:`1px solid ${t.done?"#00ffaa33":"#00d4ff33"}`,background:t.done?"#00ffaa0a":"#00d4ff0a",borderRadius:2,display:"flex",alignItems:"center",gap:10}}><input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{width:16,height:16,cursor:"pointer"}}/><span style={{flex:1,textDecoration:t.done?"line-through":"none",opacity:t.done?.6:1}}>{t.text}</span><button className="act red" onClick={()=>deleteTask(t.id)} style={{fontSize:8}}>DEL</button></div>))}</div><div style={{padding:8,borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="Add task..." onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTask();}}} style={{flex:1}}/><button className="act green" onClick={addTask}>ADD</button></div></div>)}
+        {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{padding:16,border:`1px solid ${d.on?"#00ffaa33":"#00d4ff33"}`,background:d.on?"#00ffaa0a":"#00d4ff0a",borderRadius:2,cursor:"pointer",textAlign:"center",transition:"all .2s"}}><div style={{fontSize:24,marginBottom:8}}>{d.icon}</div><div style={{fontSize:11,color:d.on?"#00ffaa":"#7ab8cc",letterSpacing:1}}>{d.label}</div><div style={{fontSize:9,color:d.on?"#00ffaa":"#7ab8cc44",marginTop:4}}>{d.on?"● ON":"○ OFF"}</div></div>))}</div></div>)}
+        {tab==="settings"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>SYSTEM PROMPT</div><textarea value={sysInput} onChange={e=>setSysInput(e.target.value)} style={{width:"100%",height:150,padding:12,background:"#00050f",border:"1px solid #00d4ff33",color:"#00d4ff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,borderRadius:2,resize:"none"}}/><button className="act green" onClick={saveSettings} style={{marginTop:12}}>SAVE SETTINGS</button>{settingsSaved&&<div style={{marginTop:8,fontSize:10,color:"#00ffaa"}}>✓ Settings saved</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>CHANGE PASSWORD</div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>NEW PASSWORD</div><input type="password" value={pwChange.next} onChange={e=>setPwChange({...pwChange,next:e.target.value})} placeholder="New password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>CONFIRM PASSWORD</div><input type="password" value={pwChange.confirm} onChange={e=>setPwChange({...pwChange,confirm:e.target.value})} placeholder="Confirm password"/></div><button className="act amber" onClick={changePassword} style={{width:"100%"}}>UPDATE PASSWORD</button>{pwMsg&&<div style={{marginTop:8,fontSize:10,color:pwMsg.includes("updated")?"#00ffaa":"#ff4444"}}>{pwMsg}</div>}</div><div style={{marginTop:16,padding:16,border:"1px solid #ff444433",background:"#ff444408",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#ff4444",marginBottom:12}}>DANGER ZONE</div><button className="act red" onClick={clearChatHistory} style={{width:"100%"}}>CLEAR CHAT HISTORY</button></div></div>)}
+        {tab==="admin"&&authUser?.role==="admin"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>CREATE USER</div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>USERNAME</div><input value={newUser.username} onChange={e=>setNewUser({...newUser,username:e.target.value})} placeholder="Username"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>PASSWORD</div><input type="password" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} placeholder="Password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>ROLE</div><select value={newUser.role} onChange={e=>setNewUser({...newUser,role:e.target.value})} style={{width:"100%",padding:"10px 12px",background:"#00d4ff0a",border:"1px solid #00d4ff33",color:"#00d4ff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,borderRadius:2}}><option value="user">User</option><option value="admin">Admin</option></select></div><button className="act green" onClick={createUser} style={{width:"100%"}}>CREATE</button>{adminMsg&&<div style={{marginTop:8,fontSize:10,color:adminMsg.includes("Error")?"#ff4444":"#00ffaa"}}>{adminMsg}</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>USERS</div>{adminUsers.map(u=>(<div key={u.id} style={{padding:12,border:"1px solid #00d4ff22",background:"#00050f",borderRadius:2,marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:11,color:"#00d4ff",marginBottom:4}}>{u.username}</div><div style={{fontSize:9,color:u.role==="admin"?"#ffaa00":"#7ab8cc"}}>{u.role.toUpperCase()}</div></div><button className="act red" onClick={()=>deleteUser(u.id)} style={{fontSize:8}}>DELETE</button></div>))}</div></div>)}
       </div>
 
       <div style={{padding:"5px 14px",borderTop:"1px solid #00d4ff22",display:"flex",justifyContent:"space-between",fontSize:8,color:"#7ab8cc33",letterSpacing:2,background:"#00050fcc",flexShrink:0}}>
