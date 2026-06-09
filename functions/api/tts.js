@@ -16,29 +16,28 @@ export async function onRequestPost({ request, env }) {
 
   try {
     // Clean up text for TTS (remove markdown, trim)
-    const cleanText = text.replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
+const cleanText = text.replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
 
-    // Call Google Cloud Text-to-Speech API
-    const response = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input: { text: cleanText },
-        voice: {
-          language_code: language_code,
-          name: 'en-GB-Neural2-C', // JARVIS-like voice: British, male, sophisticated
-        },
-        audioConfig: {
-          audioEncoding: 'MP3',
-          pitch: pitch - 1, // Google API expects -20 to 20, where 0 is neutral. Convert from 0.85 to -0.15
-          speakingRate: speaking_rate,
-          volumeGainDb: 0,
-        },
-      }),
-      urlSearchParams: new URLSearchParams({ key: apiKey }),
-    });
+// Call Google Cloud Text-to-Speech API (API Key appended directly to the URL string)
+const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    input: { text: cleanText },
+    voice: {
+      languageCode: language_code, // Note: Google API camelCases this as languageCode
+      name: 'en-GB-Neural2-C', 
+    },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      pitch: pitch - 1, 
+      speakingRate: speaking_rate,
+      volumeGainDb: 0,
+    },
+  }),
+});
 
     if (!response.ok) {
       const errorData = await response.json();
