@@ -31,8 +31,7 @@ const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthe
       name: 'en-GB-Chirp3-HD-Charon', 
     },
     audioConfig: {
-      audioEncoding: 'MP3',
-      pitch: pitch - 1, 
+      audioEncoding: 'MP3', 
       speakingRate: speaking_rate,
       volumeGainDb: 0,
     },
