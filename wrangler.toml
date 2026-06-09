@@ -2,11 +2,11 @@ name = "jarvis-pwa"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "."
 
-[[d1_databases]]
-binding = "DB"
-database_name = "jarvis-db"
-database_id = "a8897bc5-1e86-4860-819f-c1cad12a04d8"  # Replace after: wrangler d1 create jarvis-db
-
 # Environment variables
 [env.production]
 vars = { PREFER_OPENROUTER = "false" }
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "jarvis-db"
+database_id = "a8897bc5-1e86-4860-819f-c1cad12a04d8"  # Replace after: wrangler d1 create jarvis-db
