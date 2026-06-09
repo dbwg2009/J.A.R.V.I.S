@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS settings (
   voice_on INTEGER NOT NULL DEFAULT 1,
   web_search INTEGER NOT NULL DEFAULT 0,
   system_prompt TEXT NOT NULL DEFAULT '',
+  llm_provider TEXT NOT NULL DEFAULT 'anthropic', -- 'anthropic' or 'openrouter'
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -46,5 +47,5 @@ INSERT OR IGNORE INTO users (username, password_hash, role)
 VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'admin');
 
 -- Default settings for admin
-INSERT OR IGNORE INTO settings (user_id, voice_on, web_search, system_prompt)
-VALUES (1, 1, 0, '');
+INSERT OR IGNORE INTO settings (user_id, voice_on, web_search, system_prompt, llm_provider)
+VALUES (1, 1, 0, '', 'anthropic');
