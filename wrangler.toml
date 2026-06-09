@@ -6,3 +6,7 @@ pages_build_output_dir = "."
 binding = "DB"
 database_name = "jarvis-db"
 database_id = "YOUR_D1_DATABASE_ID"  # Replace after: wrangler d1 create jarvis-db
+
+# Environment variables
+[env.production]
+vars = { PREFER_OPENROUTER = "false" }
