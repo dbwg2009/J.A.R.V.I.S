@@ -79,7 +79,7 @@ async function handleAnthropic(messages, sysPrompt, web_search, apiKey) {
 
 async function handleOpenRouter(messages, sysPrompt, openrouterKey) {
   const body = {
-    model: 'openai/gpt-4-turbo',
+    model: 'openrouter/auto:free',
     messages: [
       { role: 'system', content: sysPrompt },
       ...messages,
@@ -92,7 +92,7 @@ async function handleOpenRouter(messages, sysPrompt, openrouterKey) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${openrouterKey}`,
-      'HTTP-Referer': 'https://jarvis.example.com',
+      'HTTP-Referer': 'https://jarvis.dbwg2009.uk',
       'X-Title': 'J.A.R.V.I.S.',
     },
     body: JSON.stringify(body),
