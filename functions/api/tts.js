@@ -28,7 +28,7 @@ const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthe
     input: { text: cleanText },
     voice: {
       languageCode: language_code, // Note: Google API camelCases this as languageCode
-      name: 'en-GB-Neural2-C', 
+      name: 'en-GB-Chirp3-HD-Charon', 
     },
     audioConfig: {
       audioEncoding: 'MP3',
