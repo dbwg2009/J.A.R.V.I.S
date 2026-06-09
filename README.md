@@ -19,7 +19,7 @@
 - ✅ **Task manager** — Per-user objective tracking, synced to D1.
 - 🏠 **Home panel** — Simulated smart home device controls.
 - 🎤 **Voice input** — Web Speech API for hands-free commands.
-- 🔊 **Voice output** — British TTS via SpeechSynthesis (prefers Daniel / en-GB voice).
+- 🔊 **Voice output** — Google Cloud Text-to-Speech with British neural voice (JARVIS-like).
 - 🌐 **Web search** — Optional live web search via Anthropic's built-in tool.
 - ⚙️ **Per-user settings** — Voice toggle, web search toggle, custom system prompt, LLM provider selection — all saved to D1.
 - 📱 **Installable PWA** — Works offline, installable on mobile and desktop.
@@ -37,9 +37,10 @@ Browser (PWA)
                                 │
                                 ├── Session auth (cookie → D1 lookup)
                                 ├── D1 Database (users, sessions, tasks, settings, chat)
-                                └── LLM Provider Routing
-                                    ├── Anthropic API (if ANTHROPIC_API_KEY set)
-                                    └── OpenRouter API (if OPENROUTER_API_KEY set)
+                                ├── LLM Provider Routing
+                                │   ├── Anthropic API (if ANTHROPIC_API_KEY set)
+                                │   └── OpenRouter API (if OPENROUTER_API_KEY set)
+                                └── Google Cloud Text-to-Speech (if GOOGLE_CLOUD_TTS_API_KEY set)
 ```
 
 ---
@@ -54,7 +55,7 @@ J.A.R.V.I.S. now supports **multiple LLM providers** for maximum flexibility:
 - **Features:** Built-in web search support
 
 ### OpenRouter
-- **Model:** `openai/gpt-4-turbo` (configurable)
+- **Model:** `openrouter/auto:free` (configurable)
 - **Setup:** Set `OPENROUTER_API_KEY` as a Cloudflare Worker secret
 - **Features:** Access to 200+ models via unified API
 
@@ -62,6 +63,72 @@ J.A.R.V.I.S. now supports **multiple LLM providers** for maximum flexibility:
 - System defaults to **Anthropic** if both keys are available
 - Set `PREFER_OPENROUTER = "true"` in `wrangler.toml` to prioritize OpenRouter
 - Users can select their preferred provider in Settings
+
+---
+
+## Google Cloud Text-to-Speech
+
+J.A.R.V.I.S. uses **Google Cloud Text-to-Speech** for natural, sophisticated speech synthesis with a British neural voice that sounds like JARVIS from Iron Man.
+
+### Features
+- **Neural voice:** `en-GB-Neural2-C` — Male, professional British accent
+- **Natural prosody:** Adjustable pitch and speaking rate
+- **Free tier:** 500,000 characters/month (plenty for a personal assistant)
+- **Authenticated:** Only authenticated users can trigger TTS
+
+### Setup Instructions
+
+#### 1. Create a Google Cloud project
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Navigate to **APIs & Services** → **Library**
+4. Search for **"Cloud Text-to-Speech API"**
+5. Click **Enable**
+
+#### 2. Create a service account key
+1. Go to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **Service Account**
+3. Fill in the details (name, description optional)
+4. Click **Create and Continue**
+5. Grant the role **Basic** → **Editor** (or more restrictively, create a custom role with `texttospeech.googleapis.com` permissions)
+6. Click **Continue** → **Done**
+7. Find your new service account in the list and click it
+8. Go to the **Keys** tab
+9. Click **Add Key** → **Create new key**
+10. Choose **JSON** and click **Create**
+11. A JSON file will download — save it securely
+
+#### 3. Extract the API key
+The JSON file contains a `private_key` field. You need to extract just the API key string:
+
+```bash
+# On macOS/Linux:
+cat /path/to/your/service-account-key.json | jq -r '.private_key'
+```
+
+Or, open the JSON file and copy the value of the `"private_key"` field (including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` markers).
+
+#### 4. Set the secret in Cloudflare Workers
+
+```bash
+wrangler pages secret put GOOGLE_CLOUD_TTS_API_KEY
+```
+
+Paste the full private key (with BEGIN/END markers) when prompted.
+
+#### 5. Verify it's working
+Once deployed, enable voice output in the app settings and send a message. You should hear the JARVIS-like British voice respond.
+
+### Pricing
+- **Free:** 500,000 characters/month per project
+- **Paid:** $16 per 1 million characters after free tier
+- [Google Cloud Pricing](https://cloud.google.com/text-to-speech/pricing)
+
+### API Endpoint
+The app calls `POST /api/tts` which proxies to Google Cloud's `text:synthesize` endpoint:
+- Returns audio as base64-encoded MP3
+- Supports custom language codes, pitch, and speaking rate
+- Only accessible to authenticated users
 
 ---
 
@@ -75,6 +142,7 @@ J.A.R.V.I.S. now supports **multiple LLM providers** for maximum flexibility:
 - **At least one** of:
   - An [Anthropic API key](https://console.anthropic.com/)
   - An [OpenRouter API key](https://openrouter.ai/)
+- *(Optional but recommended)* A [Google Cloud service account key](https://cloud.google.com/docs/authentication/application-default-credentials) for TTS
 
 ### 1. Clone the repository
 
@@ -132,7 +200,19 @@ Paste your keys when prompted. These are stored securely and never exposed to th
 
 > 💡 You only need to set **one** API key minimum, but can set both for flexibility.
 
-### 6. (Optional) Configure provider preference
+### 6. (Optional) Set your Google Cloud TTS API key
+
+If you want voice output with the JARVIS voice:
+
+```bash
+wrangler pages secret put GOOGLE_CLOUD_TTS_API_KEY
+```
+
+Paste your service account private key (with BEGIN/END markers) when prompted.
+
+> 💡 If not set, the app will fall back gracefully without voice output.
+
+### 7. (Optional) Configure provider preference
 
 Edit `wrangler.toml` to set your default provider:
 
@@ -141,7 +221,7 @@ Edit `wrangler.toml` to set your default provider:
 vars = { PREFER_OPENROUTER = "false" }  # false = Anthropic, true = OpenRouter
 ```
 
-### 7. Deploy to Cloudflare Pages
+### 8. Deploy to Cloudflare Pages
 
 ```bash
 wrangler pages deploy .
@@ -173,6 +253,7 @@ wrangler pages dev . --d1=DB=jarvis-db
 |------|-------------|-------------|
 | `ANTHROPIC_API_KEY` | Wrangler secret / Pages dashboard | Your Anthropic API key (optional if using OpenRouter) |
 | `OPENROUTER_API_KEY` | Wrangler secret / Pages dashboard | Your OpenRouter API key (optional if using Anthropic) |
+| `GOOGLE_CLOUD_TTS_API_KEY` | Wrangler secret / Pages dashboard | Your Google Cloud service account private key (optional for voice output) |
 | `PREFER_OPENROUTER` | `wrangler.toml` vars | Set to `"true"` to prefer OpenRouter when both keys available (default: `"false"`) |
 | `DB` | `wrangler.toml` D1 binding | Auto-configured — do not change |
 
@@ -200,6 +281,7 @@ J.A.R.V.I.S./
         ├── logout.js        # POST /api/logout
         ├── me.js            # GET  /api/me
         ├── message.js       # POST /api/message (LLM proxy with provider routing)
+        ├── tts.js           # POST /api/tts (Google Cloud Text-to-Speech proxy)
         ├── tasks.js         # GET/POST/PUT/DELETE /api/tasks
         ├── settings.js      # GET/PUT /api/settings
         ├── chat.js          # GET/POST/DELETE /api/chat
@@ -214,7 +296,9 @@ J.A.R.V.I.S./
 - Session tokens are 32-byte cryptographically random hex strings.
 - Sessions expire after **30 days**.
 - LLM API keys are stored as **Cloudflare Worker secrets** — never sent to the browser.
+- Google Cloud API keys are stored as **Cloudflare Worker secrets** — never sent to the browser.
 - All cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`.
+- Text-to-speech only works for authenticated users.
 
 ---
 
