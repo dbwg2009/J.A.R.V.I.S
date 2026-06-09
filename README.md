@@ -12,7 +12,7 @@
 
 ## Features
 
-- 🤖 **AI Chat** — Powered by Claude (claude-sonnet-4) via a secure server-side proxy. Your Anthropic API key never touches the browser.
+- 🤖 **AI Chat** — Powered by Claude (claude-sonnet-4) via Anthropic OR GPT-4 via OpenRouter. Flexible LLM switching. Your API keys never touch the browser.
 - 🔐 **Multi-user login system** — Session-based authentication with persistent 30-day cookies. Per-user data isolation.
 - 👤 **Admin panel** — Create, manage, and delete user accounts. Promote users to admin. All in-UI.
 - 🗄️ **Cloudflare D1** — All data (chat history, tasks, settings, users, sessions) persisted in a serverless SQLite database at the edge.
@@ -21,7 +21,7 @@
 - 🎤 **Voice input** — Web Speech API for hands-free commands.
 - 🔊 **Voice output** — British TTS via SpeechSynthesis (prefers Daniel / en-GB voice).
 - 🌐 **Web search** — Optional live web search via Anthropic's built-in tool.
-- ⚙️ **Per-user settings** — Voice toggle, web search toggle, custom system prompt — all saved to D1.
+- ⚙️ **Per-user settings** — Voice toggle, web search toggle, custom system prompt, LLM provider selection — all saved to D1.
 - 📱 **Installable PWA** — Works offline, installable on mobile and desktop.
 
 ---
@@ -37,8 +37,31 @@ Browser (PWA)
                                 │
                                 ├── Session auth (cookie → D1 lookup)
                                 ├── D1 Database (users, sessions, tasks, settings, chat)
-                                └── Anthropic API (API key stored as Worker secret)
+                                └── LLM Provider Routing
+                                    ├── Anthropic API (if ANTHROPIC_API_KEY set)
+                                    └── OpenRouter API (if OPENROUTER_API_KEY set)
 ```
+
+---
+
+## LLM Provider Support
+
+J.A.R.V.I.S. now supports **multiple LLM providers** for maximum flexibility:
+
+### Anthropic (Claude)
+- **Model:** `claude-sonnet-4-20250514`
+- **Setup:** Set `ANTHROPIC_API_KEY` as a Cloudflare Worker secret
+- **Features:** Built-in web search support
+
+### OpenRouter
+- **Model:** `openai/gpt-4-turbo` (configurable)
+- **Setup:** Set `OPENROUTER_API_KEY` as a Cloudflare Worker secret
+- **Features:** Access to 200+ models via unified API
+
+### Provider Selection
+- System defaults to **Anthropic** if both keys are available
+- Set `PREFER_OPENROUTER = "true"` in `wrangler.toml` to prioritize OpenRouter
+- Users can select their preferred provider in Settings
 
 ---
 
@@ -49,7 +72,9 @@ Browser (PWA)
 - [Node.js](https://nodejs.org/) 18+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) — `npm install -g wrangler`
 - A [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
-- An [Anthropic API key](https://console.anthropic.com/)
+- **At least one** of:
+  - An [Anthropic API key](https://console.anthropic.com/)
+  - An [OpenRouter API key](https://openrouter.ai/)
 
 ### 1. Clone the repository
 
@@ -91,15 +116,32 @@ This creates all tables and inserts the default admin account:
 
 > ⚠️ Change the admin password immediately after first login via Settings → Change Password.
 
-### 5. Set your Anthropic API key as a secret
+### 5. Set your LLM API keys as secrets
 
+**For Anthropic:**
 ```bash
 wrangler pages secret put ANTHROPIC_API_KEY
 ```
 
-Paste your key when prompted. This stores it securely — it is never exposed to the browser.
+**For OpenRouter:**
+```bash
+wrangler pages secret put OPENROUTER_API_KEY
+```
 
-### 6. Deploy to Cloudflare Pages
+Paste your keys when prompted. These are stored securely and never exposed to the browser.
+
+> 💡 You only need to set **one** API key minimum, but can set both for flexibility.
+
+### 6. (Optional) Configure provider preference
+
+Edit `wrangler.toml` to set your default provider:
+
+```toml
+[env.production]
+vars = { PREFER_OPENROUTER = "false" }  # false = Anthropic, true = OpenRouter
+```
+
+### 7. Deploy to Cloudflare Pages
 
 ```bash
 wrangler pages deploy .
@@ -129,7 +171,9 @@ wrangler pages dev . --d1=DB=jarvis-db
 
 | Name | Where to set | Description |
 |------|-------------|-------------|
-| `ANTHROPIC_API_KEY` | Wrangler secret / Pages dashboard | Your Anthropic API key |
+| `ANTHROPIC_API_KEY` | Wrangler secret / Pages dashboard | Your Anthropic API key (optional if using OpenRouter) |
+| `OPENROUTER_API_KEY` | Wrangler secret / Pages dashboard | Your OpenRouter API key (optional if using Anthropic) |
+| `PREFER_OPENROUTER` | `wrangler.toml` vars | Set to `"true"` to prefer OpenRouter when both keys available (default: `"false"`) |
 | `DB` | `wrangler.toml` D1 binding | Auto-configured — do not change |
 
 ---
@@ -155,7 +199,7 @@ J.A.R.V.I.S./
         ├── login.js         # POST /api/login
         ├── logout.js        # POST /api/logout
         ├── me.js            # GET  /api/me
-        ├── message.js       # POST /api/message (Anthropic proxy)
+        ├── message.js       # POST /api/message (LLM proxy with provider routing)
         ├── tasks.js         # GET/POST/PUT/DELETE /api/tasks
         ├── settings.js      # GET/PUT /api/settings
         ├── chat.js          # GET/POST/DELETE /api/chat
@@ -169,7 +213,7 @@ J.A.R.V.I.S./
 - Passwords are hashed with **SHA-256** before storage in D1.
 - Session tokens are 32-byte cryptographically random hex strings.
 - Sessions expire after **30 days**.
-- The Anthropic API key is stored as a **Cloudflare Worker secret** — never sent to the browser.
+- LLM API keys are stored as **Cloudflare Worker secrets** — never sent to the browser.
 - All cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`.
 
 ---
