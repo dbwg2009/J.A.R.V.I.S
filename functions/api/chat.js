@@ -4,11 +4,12 @@ export async function onRequestGet({ request, env }) {
   const user = await getSessionUser(request, env.DB);
   if (!user) return unauthorized();
 
+  // Latest 50 messages, returned in chronological order
   const { results } = await env.DB.prepare(
-    `SELECT id, role, content, created_at FROM chat_history WHERE user_id = ? ORDER BY created_at ASC LIMIT 50`
+    `SELECT id, role, content, created_at FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT 50`
   ).bind(user.user_id).all();
 
-  return json({ messages: results });
+  return json({ messages: results.reverse() });
 }
 
 export async function onRequestPost({ request, env }) {
@@ -24,7 +25,7 @@ export async function onRequestPost({ request, env }) {
 
   await env.DB.prepare(`
     DELETE FROM chat_history WHERE user_id = ? AND id NOT IN (
-      SELECT id FROM chat_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 100
+      SELECT id FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT 100
     )
   `).bind(user.user_id, user.user_id).run();
 

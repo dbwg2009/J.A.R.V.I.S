@@ -13,8 +13,19 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'No LLM API key configured on server. Ask your admin to set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.' }, 503);
   }
 
-  const { messages, web_search, system_prompt } = await request.json();
-  if (!messages?.length) return json({ error: 'Messages required' }, 400);
+  const { messages: rawMessages, web_search, system_prompt } = await request.json();
+  if (!rawMessages?.length) return json({ error: 'Messages required' }, 400);
+
+  // Keep only valid roles/fields, and drop any leading assistant messages
+  // (the UI greeting) — the Anthropic API requires the first message to be from the user.
+  const cleaned = rawMessages
+    .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .map(m => ({ role: m.role, content: m.content }));
+  const firstUser = cleaned.findIndex(m => m.role === 'user');
+  const messages = firstUser >= 0 ? cleaned.slice(firstUser) : [];
+  if (!messages.length || messages[messages.length - 1].role !== 'user') {
+    return json({ error: 'Conversation must end with a user message' }, 400);
+  }
 
   const sysPrompt = system_prompt || SYS_DEFAULT;
 
@@ -38,7 +49,7 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare(`INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)`).bind(user.user_id, lastUser.role, lastUser.content).run();
     await env.DB.prepare(`INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)`).bind(user.user_id, 'assistant', reply).run();
 
-    await env.DB.prepare(`DELETE FROM chat_history WHERE user_id = ? AND id NOT IN (SELECT id FROM chat_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 100)`).bind(user.user_id, user.user_id).run();
+    await env.DB.prepare(`DELETE FROM chat_history WHERE user_id = ? AND id NOT IN (SELECT id FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT 100)`).bind(user.user_id, user.user_id).run();
 
     return json({ reply });
   } catch (e) {
@@ -55,7 +66,7 @@ async function handleAnthropic(messages, sysPrompt, web_search, apiKey) {
   };
 
   if (web_search) {
-    body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+    body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
