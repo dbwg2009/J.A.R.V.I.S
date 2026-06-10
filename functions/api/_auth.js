@@ -23,15 +23,25 @@ export async function hashPassword(password) {
 }
 
 // Accepts both the current salted PBKDF2 format and legacy unsalted SHA-256 hex digests.
+// Fails closed (returns false) on malformed stored hashes rather than throwing.
 export async function verifyPassword(password, stored) {
   if (!stored) return false;
-  if (stored.startsWith('pbkdf2$')) {
-    const [, iter, saltHex, hashHex] = stored.split('$');
-    const hash = await pbkdf2(password, fromHex(saltHex), parseInt(iter, 10));
-    return toHex(hash) === hashHex;
+  try {
+    if (stored.startsWith('pbkdf2$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 4) return false;
+      const [, iter, saltHex, hashHex] = parts;
+      const iterations = Number.parseInt(iter, 10);
+      if (!Number.isSafeInteger(iterations) || iterations <= 0) return false;
+      if (!/^(?:[0-9a-f]{2})+$/i.test(saltHex) || !/^(?:[0-9a-f]{2})+$/i.test(hashHex)) return false;
+      const hash = await pbkdf2(password, fromHex(saltHex), iterations);
+      return toHex(hash) === hashHex.toLowerCase();
+    }
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+    return toHex(new Uint8Array(digest)) === stored;
+  } catch {
+    return false;
   }
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
-  return toHex(new Uint8Array(digest)) === stored;
 }
 
 export function isLegacyHash(stored) {

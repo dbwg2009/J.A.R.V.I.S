@@ -50,9 +50,14 @@ export async function onRequestPut({ request, env }) {
 
   const { id, username, password, role, current_password } = await request.json();
 
-  // No id means "update my own account"
-  const targetId = id ?? user.user_id;
+  // No id means "update my own account"; canonicalize to a number so string
+  // ids can't slip past the strict-equality self checks below.
+  const targetId = id == null ? user.user_id : Number.parseInt(String(id), 10);
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) return json({ error: 'Invalid user id' }, 400);
   if (user.role !== 'admin' && targetId !== user.user_id) return unauthorized();
+
+  // Validate everything first, then apply all changes atomically in one batch
+  const updates = [];
 
   if (password) {
     if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
@@ -64,14 +69,21 @@ export async function onRequestPut({ request, env }) {
       }
     }
     const hash = await hashPassword(password);
-    await env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(hash, targetId).run();
+    updates.push(env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(hash, targetId));
   }
   if (username && user.role === 'admin') {
-    await env.DB.prepare(`UPDATE users SET username = ? WHERE id = ?`).bind(username.toLowerCase().trim(), targetId).run();
+    updates.push(env.DB.prepare(`UPDATE users SET username = ? WHERE id = ?`).bind(username.toLowerCase().trim(), targetId));
   }
   if (role && user.role === 'admin') {
     if (targetId === user.user_id && role !== 'admin') return json({ error: 'Cannot demote your own account' }, 400);
-    await env.DB.prepare(`UPDATE users SET role = ? WHERE id = ?`).bind(role === 'admin' ? 'admin' : 'user', targetId).run();
+    updates.push(env.DB.prepare(`UPDATE users SET role = ? WHERE id = ?`).bind(role === 'admin' ? 'admin' : 'user', targetId));
+  }
+
+  try {
+    if (updates.length) await env.DB.batch(updates);
+  } catch (e) {
+    if (e.message?.includes('UNIQUE')) return json({ error: 'Username already exists' }, 409);
+    return json({ error: 'Server error' }, 500);
   }
 
   return json({ ok: true });

@@ -14,12 +14,12 @@ export async function onRequestPost({ request, env }) {
   }
 
   const { messages: rawMessages, web_search, system_prompt } = await request.json();
-  if (!rawMessages?.length) return json({ error: 'Messages required' }, 400);
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0) return json({ error: 'Messages required' }, 400);
 
   // Keep only valid roles/fields, and drop any leading assistant messages
   // (the UI greeting) — the Anthropic API requires the first message to be from the user.
   const cleaned = rawMessages
-    .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role, content: m.content }));
   const firstUser = cleaned.findIndex(m => m.role === 'user');
   const messages = firstUser >= 0 ? cleaned.slice(firstUser) : [];

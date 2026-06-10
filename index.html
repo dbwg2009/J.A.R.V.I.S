@@ -176,6 +176,7 @@ function App(){
   const [listening,setListening]=useState(false);
   const [speaking,setSpeaking]=useState(false);
   const [voiceOn,setVoiceOn]=useState(true);
+  const [llmProvider,setLlmProvider]=useState("anthropic");
   const [voiceErr,setVoiceErr]=useState("");
   const [sttOk,setSttOk]=useState(false);
   const [drawer,setDrawer]=useState(false);
@@ -209,6 +210,7 @@ function App(){
     if(!s.error){
       setVoiceOn(s.voice_on);
       setWebSearch(s.web_search);
+      setLlmProvider(s.llm_provider||"anthropic");
       setSysPrompt(s.system_prompt||SYS_DEFAULT);
       setSysInput(s.system_prompt||SYS_DEFAULT);
     }
@@ -218,12 +220,13 @@ function App(){
     if(c.messages?.length){
       setMsgs(c.messages.map(m=>({role:m.role,content:m.content})));
     }
+    return s.error?null:s;
   }
 
-  function onLogin(user){
+  async function onLogin(user){
     setAuthUser(user);
-    loadUserData();
-    speak("Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?");
+    const prefs=await loadUserData();
+    if(prefs?.voice_on!==false) speak("Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?");
   }
 
   async function handleLogout(){
@@ -257,6 +260,7 @@ function App(){
 
   function startListening(){
     if(listening){recRef.current?.stop();return;}
+    if(loading){setVoiceErr("One moment, sir — still processing the previous request.");return;}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){setVoiceErr("Speech recognition is not supported in this browser, sir. Try Chrome, Edge or Safari.");return;}
     if(audioRef.current){audioRef.current.pause();setSpeaking(false);}
@@ -334,11 +338,11 @@ function App(){
     const next={voice_on:voiceOn,web_search:webSearch,...patch};
     setVoiceOn(next.voice_on);
     setWebSearch(next.web_search);
-    api.put("/api/settings",{...next,system_prompt:sysPrompt}).catch(()=>{});
+    api.put("/api/settings",{...next,system_prompt:sysPrompt,llm_provider:llmProvider}).catch(()=>{});
   }
 
   async function saveSettings(){
-    await api.put("/api/settings",{voice_on:voiceOn,web_search:webSearch,system_prompt:sysInput});
+    await api.put("/api/settings",{voice_on:voiceOn,web_search:webSearch,system_prompt:sysInput,llm_provider:llmProvider});
     setSysPrompt(sysInput);
     setSettingsSaved(true);
     setTimeout(()=>setSettingsSaved(false),2500);
