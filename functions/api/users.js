@@ -1,4 +1,4 @@
-import { getSessionUser, hashPassword, json, unauthorized } from './_auth.js';
+import { getSessionUser, hashPassword, verifyPassword, json, unauthorized } from './_auth.js';
 
 function adminOnly(user) {
   if (!user || user.role !== 'admin') return unauthorized();
@@ -24,6 +24,7 @@ export async function onRequestPost({ request, env }) {
 
   const { username, password, role } = await request.json();
   if (!username?.trim() || !password) return json({ error: 'Username and password required' }, 400);
+  if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
 
   const hash = await hashPassword(password);
   try {
@@ -47,19 +48,42 @@ export async function onRequestPut({ request, env }) {
   const user = await getSessionUser(request, env.DB);
   if (!user) return unauthorized();
 
-  const { id, username, password, role } = await request.json();
+  const { id, username, password, role, current_password } = await request.json();
 
-  if (user.role !== 'admin' && id !== user.user_id) return unauthorized();
+  // No id means "update my own account"; canonicalize to a number so string
+  // ids can't slip past the strict-equality self checks below.
+  const targetId = id == null ? user.user_id : Number.parseInt(String(id), 10);
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) return json({ error: 'Invalid user id' }, 400);
+  if (user.role !== 'admin' && targetId !== user.user_id) return unauthorized();
+
+  // Validate everything first, then apply all changes atomically in one batch
+  const updates = [];
 
   if (password) {
+    if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
+    // Changing your own password requires proving you know the current one
+    if (targetId === user.user_id) {
+      const row = await env.DB.prepare(`SELECT password_hash FROM users WHERE id = ?`).bind(targetId).first();
+      if (!current_password || !(await verifyPassword(current_password, row?.password_hash))) {
+        return json({ error: 'Current password is incorrect' }, 403);
+      }
+    }
     const hash = await hashPassword(password);
-    await env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(hash, id).run();
+    updates.push(env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(hash, targetId));
   }
   if (username && user.role === 'admin') {
-    await env.DB.prepare(`UPDATE users SET username = ? WHERE id = ?`).bind(username.toLowerCase().trim(), id).run();
+    updates.push(env.DB.prepare(`UPDATE users SET username = ? WHERE id = ?`).bind(username.toLowerCase().trim(), targetId));
   }
   if (role && user.role === 'admin') {
-    await env.DB.prepare(`UPDATE users SET role = ? WHERE id = ?`).bind(role === 'admin' ? 'admin' : 'user', id).run();
+    if (targetId === user.user_id && role !== 'admin') return json({ error: 'Cannot demote your own account' }, 400);
+    updates.push(env.DB.prepare(`UPDATE users SET role = ? WHERE id = ?`).bind(role === 'admin' ? 'admin' : 'user', targetId));
+  }
+
+  try {
+    if (updates.length) await env.DB.batch(updates);
+  } catch (e) {
+    if (e.message?.includes('UNIQUE')) return json({ error: 'Username already exists' }, 409);
+    return json({ error: 'Server error' }, 500);
   }
 
   return json({ ok: true });

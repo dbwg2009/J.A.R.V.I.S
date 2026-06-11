@@ -1,4 +1,4 @@
-const CACHE = 'jarvis-v1';
+const CACHE = 'jarvis-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -21,8 +21,35 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('anthropic.com')) return;
+  const url = new URL(e.request.url);
+
+  // Never intercept API calls or non-GET requests
+  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) return;
+
+  // Network-first for page navigations so deploys reach users immediately
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) {
+            const copy = res.clone();
+            e.waitUntil(caches.open(CACHE).then(c => c.put('/index.html', copy)));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Cache-first for static assets
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('/index.html')))
+    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+      if (res.ok && (url.origin === location.origin || ASSETS.includes(e.request.url))) {
+        const copy = res.clone();
+        e.waitUntil(caches.open(CACHE).then(c => c.put(e.request, copy)));
+      }
+      return res;
+    }))
   );
 });

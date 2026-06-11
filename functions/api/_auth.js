@@ -1,11 +1,51 @@
 // Shared auth helpers
 
+const PBKDF2_ITERATIONS = 100000;
+
+function toHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function fromHex(hex) {
+  return new Uint8Array(hex.match(/.{2}/g).map(h => parseInt(h, 16)));
+}
+
+async function pbkdf2(password, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return new Uint8Array(bits);
+}
+
 export async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await pbkdf2(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt)}$${toHex(hash)}`;
+}
+
+// Accepts both the current salted PBKDF2 format and legacy unsalted SHA-256 hex digests.
+// Fails closed (returns false) on malformed stored hashes rather than throwing.
+export async function verifyPassword(password, stored) {
+  if (!stored) return false;
+  try {
+    if (stored.startsWith('pbkdf2$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 4) return false;
+      const [, iter, saltHex, hashHex] = parts;
+      const iterations = Number.parseInt(iter, 10);
+      if (!Number.isSafeInteger(iterations) || iterations <= 0) return false;
+      if (!/^(?:[0-9a-f]{2})+$/i.test(saltHex) || !/^(?:[0-9a-f]{2})+$/i.test(hashHex)) return false;
+      const hash = await pbkdf2(password, fromHex(saltHex), iterations);
+      return toHex(hash) === hashHex.toLowerCase();
+    }
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+    return toHex(new Uint8Array(digest)) === stored;
+  } catch {
+    return false;
+  }
+}
+
+export function isLegacyHash(stored) {
+  return !!stored && !stored.startsWith('pbkdf2$');
 }
 
 export function generateToken() {

@@ -33,6 +33,24 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Failed-login tracking for rate limiting (also auto-created at runtime)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL,
+  ip TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Per-user home devices (also auto-created and seeded at runtime)
+CREATE TABLE IF NOT EXISTS devices (
+  user_id INTEGER NOT NULL,
+  id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT '',
+  on_state INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, id)
+);
+
 CREATE TABLE IF NOT EXISTS chat_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
