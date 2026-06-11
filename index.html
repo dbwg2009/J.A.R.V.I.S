@@ -164,12 +164,7 @@ function App(){
   const [loading,setLoading]=useState(false);
   const [tasks,setTasks]=useState([]);
   const [newTask,setNewTask]=useState("");
-  const [devs,setDevs]=useState([
-    {id:"lights",label:"Lab Lights",icon:"💡",on:true},
-    {id:"security",label:"Security",icon:"🛡️",on:true},
-    {id:"hvac",label:"Climate",icon:"❄️",on:false},
-    {id:"comms",label:"Comms Array",icon:"📡",on:false},
-  ]);
+  const [devs,setDevs]=useState([]);
   const [time,setTime]=useState(new Date());
   const [pulse,setPulse]=useState(false);
   const [webSearch,setWebSearch]=useState(false);
@@ -216,17 +211,30 @@ function App(){
     }
     const t=await api.get("/api/tasks");
     if(t.tasks) setTasks(t.tasks);
+    const d=await api.get("/api/devices");
+    if(d.devices) setDevs(d.devices);
     const c=await api.get("/api/chat");
     if(c.messages?.length){
       setMsgs(c.messages.map(m=>({role:m.role,content:m.content})));
     }
-    return s.error?null:s;
+    return s.error?null:{...s,pending:(t.tasks||[]).filter(x=>!x.done).length};
+  }
+
+  // JARVIS can change tasks/devices via tools mid-chat — re-sync after each reply
+  async function refreshData(){
+    const t=await api.get("/api/tasks").catch(()=>null);
+    if(t?.tasks) setTasks(t.tasks);
+    const d=await api.get("/api/devices").catch(()=>null);
+    if(d?.devices) setDevs(d.devices);
   }
 
   async function onLogin(user){
     setAuthUser(user);
     const prefs=await loadUserData();
-    if(prefs?.voice_on!==false) speak("Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational. How may I assist you today?");
+    if(prefs?.voice_on!==false){
+      const n=prefs?.pending||0;
+      speak(`Good day, sir. All systems are online. J.A.R.V.I.S. is fully operational.${n?` You have ${n} pending task${n===1?"":"s"}.`:""} How may I assist you today?`);
+    }
   }
 
   async function handleLogout(){
@@ -305,13 +313,35 @@ function App(){
     setInput("");setLoading(true);
     try{
       const allMsgs=[...msgs,userMsg].map(m=>({role:m.role,content:m.content}));
-      const data=await api.post("/api/message",{messages:allMsgs,web_search:webSearch,system_prompt:sysPrompt});
-      if(data.error){throw new Error(data.error);}
-      setMsgs(prev=>[...prev,{role:"assistant",content:data.reply}]);
-      speak(data.reply);
+      const res=await fetch("/api/message",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:allMsgs,web_search:webSearch,system_prompt:sysPrompt})});
+      const ct=res.headers.get("Content-Type")||"";
+      if(ct.includes("application/json")){
+        const data=await res.json();
+        throw new Error(data.error||`Request failed (${res.status})`);
+      }
+      if(!res.ok||!res.body)throw new Error(`Request failed (${res.status})`);
+      setMsgs(prev=>[...prev,{role:"assistant",content:""}]);
+      const reader=res.body.getReader();
+      const decoder=new TextDecoder();
+      let full="";
+      while(true){
+        const {done,value}=await reader.read();
+        if(done)break;
+        full+=decoder.decode(value,{stream:true});
+        const snapshot=full;
+        setMsgs(prev=>{const c=[...prev];c[c.length-1]={role:"assistant",content:snapshot};return c;});
+      }
+      if(!full.trim())throw new Error("Empty response");
+      refreshData();
+      speak(full);
     }catch(e){
       const err=`Systems disruption detected, sir. ${e.message||"Please contact your administrator."}`;
-      setMsgs(prev=>[...prev,{role:"assistant",content:err}]);
+      setMsgs(prev=>{
+        const c=[...prev];
+        if(c.length&&c[c.length-1].role==="assistant"&&!c[c.length-1].content) c[c.length-1]={role:"assistant",content:err};
+        else c.push({role:"assistant",content:err});
+        return c;
+      });
       speak("Systems disruption detected, sir.");
     }
     setLoading(false);
@@ -332,7 +362,12 @@ function App(){
     setTasks(p=>p.filter(t=>t.id!==id));
   }
 
-  const toggleDev=id=>setDevs(p=>p.map(d=>d.id===id?{...d,on:!d.on}:d));
+  function toggleDev(id){
+    const d=devs.find(x=>x.id===id);
+    if(!d)return;
+    setDevs(p=>p.map(x=>x.id===id?{...x,on:!x.on}:x));
+    api.put("/api/devices",{id,on:!d.on}).catch(()=>{});
+  }
 
   function updatePrefs(patch){
     const next={voice_on:voiceOn,web_search:webSearch,...patch};
@@ -447,6 +482,8 @@ function App(){
           <div style={{fontSize:8,color:"#7ab8cc",letterSpacing:1,marginTop:1}}>{time.toLocaleDateString("en-GB",{day:"numeric",month:"short"}).toUpperCase()}</div>
         </div>
       </div>
+
+      {authUser?.default_password&&<div style={{padding:"6px 14px",background:"#ffaa0011",borderBottom:"1px solid #ffaa0044",fontSize:10,color:"#ffaa00",letterSpacing:1,position:"relative",zIndex:10,flexShrink:0}}>⚠ DEFAULT ACCESS CODE IN USE — change your password in SETTINGS</div>}
 
       <div style={{display:"flex",borderBottom:"1px solid #00d4ff22",flexShrink:0,background:"#00050faa"}}>
         {tabs.map(t=>(<button key={t} className={`tabBtn${tab===t?" active":""}`} onClick={()=>setTab(t)}>{t==="chat"?"💬 CHAT":t==="tasks"?"✅ TASKS":t==="home"?"🏠 HOME":t==="admin"?"👤 ADMIN":"⚙️ SETTINGS"}</button>))}
