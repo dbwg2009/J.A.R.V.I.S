@@ -206,6 +206,12 @@ function App(){
   speakingRef.current=speaking;
   const listeningRef=useRef(false);
   listeningRef.current=listening;
+  const voiceOnRef=useRef(true);
+  voiceOnRef.current=voiceOn;
+  const speechQueueRef=useRef([]);
+  const playingRef=useRef(false);
+  const cancelPlayRef=useRef(null);
+  const skipConvRef=useRef(false);
 
   useEffect(()=>{
     api.get("/api/me").then(data=>{
@@ -308,29 +314,48 @@ function App(){
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
   useEffect(()=>{if(loading)setPulse(true);else setTimeout(()=>setPulse(false),500);},[loading]);
 
-  const speak=useCallback(async(text)=>{
-    if(!voiceOn)return;
-    setSpeaking(true);
-    try{
-      const data=await api.post("/api/tts",{text,language_code:"en-GB",pitch:0.85,speaking_rate:0.92});
-      if(data.error)throw new Error(data.error);
+  function playB64(b64){
+    return new Promise(res=>{
       if(!audioRef.current)audioRef.current=new Audio();
-      audioRef.current.src=`data:audio/mp3;base64,${data.audioContent}`;
-      audioRef.current.onended=()=>{
-        setSpeaking(false);
-        // Conversation mode: reopen the mic once JARVIS finishes speaking
-        if(convRef.current&&!document.hidden&&listenRef.current)setTimeout(()=>listenRef.current(),350);
-      };
-      audioRef.current.onerror=()=>setSpeaking(false);
-      await audioRef.current.play();
-    }catch(e){
-      console.error("TTS failed:",e.message);
-      setSpeaking(false);
+      const a=audioRef.current;
+      const done=()=>{cancelPlayRef.current=null;a.onended=null;a.onerror=null;res();};
+      cancelPlayRef.current=done;
+      a.src=`data:audio/mp3;base64,${b64}`;
+      a.onended=done;a.onerror=done;
+      a.play().catch(done);
+    });
+  }
+
+  async function pumpSpeech(){
+    if(playingRef.current)return;
+    playingRef.current=true;
+    setSpeaking(true);
+    while(speechQueueRef.current.length){
+      const data=await speechQueueRef.current.shift();
+      if(data&&!data.error&&data.audioContent)await playB64(data.audioContent);
     }
-  },[voiceOn]);
+    playingRef.current=false;
+    setSpeaking(false);
+    if(skipConvRef.current){skipConvRef.current=false;return;}
+    // Conversation mode: reopen the mic once JARVIS finishes speaking
+    if(convRef.current&&!document.hidden&&listenRef.current)setTimeout(()=>listenRef.current(),350);
+  }
+
+  // Speech is fetched per sentence and played in order, so JARVIS starts
+  // talking as soon as the first sentence of a streamed reply is ready.
+  function speak(text){
+    if(!voiceOnRef.current)return;
+    const t=(text||"").trim();
+    if(!t)return;
+    speechQueueRef.current.push(api.post("/api/tts",{text:t,language_code:"en-GB",pitch:0.85,speaking_rate:0.92}).catch(()=>null));
+    pumpSpeech();
+  }
 
   function stopSpeaking(){
+    speechQueueRef.current=[];
+    skipConvRef.current=playingRef.current; // manual silence shouldn't reopen the mic
     if(audioRef.current)audioRef.current.pause();
+    if(cancelPlayRef.current)cancelPlayRef.current();
     setSpeaking(false);
   }
 
@@ -394,7 +419,7 @@ function App(){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){setVoiceErr("Speech recognition is not supported in this browser, sir. Try Chrome, Edge or Safari.");return;}
     stopWake();
-    if(audioRef.current){audioRef.current.pause();setSpeaking(false);}
+    stopSpeaking();
     const rec=new SR();
     rec.continuous=false;rec.interimResults=true;rec.lang="en-GB";rec.maxAlternatives=1;
     finalRef.current="";
@@ -449,17 +474,23 @@ function App(){
       setMsgs(prev=>[...prev,{role:"assistant",content:""}]);
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
-      let full="";
+      const SENT_RE=/[.!?…](?=[\s"')\]]|$)/g;
+      let full="",spoken=0;
       while(true){
         const {done,value}=await reader.read();
         if(done)break;
         full+=decoder.decode(value,{stream:true});
+        // speak completed sentences as soon as they arrive
+        const ready=full.slice(spoken);
+        let cut=-1,mm;SENT_RE.lastIndex=0;
+        while((mm=SENT_RE.exec(ready)))cut=mm.index;
+        if(cut>=0){speak(ready.slice(0,cut+1));spoken+=cut+1;}
         const snapshot=full;
         setMsgs(prev=>{const c=[...prev];c[c.length-1]={role:"assistant",content:snapshot};return c;});
       }
       if(!full.trim())throw new Error("Empty response");
       refreshData();
-      speak(full);
+      speak(full.slice(spoken));
     }catch(e){
       const err=`Systems disruption detected, sir. ${e.message||"Please contact your administrator."}`;
       setMsgs(prev=>{
