@@ -239,6 +239,23 @@ Or connect this repository to Cloudflare Pages via the dashboard for automatic d
 wrangler pages dev . --d1=DB=jarvis-db
 ```
 
+### Editing the UI
+
+The frontend is pre-compiled — JSX no longer compiles in the browser (this cut
+~2 MB of Babel from every page load). The source lives in `src/app.jsx`; the
+deployed bundle is `app.js`. After changing `src/app.jsx`, rebuild and commit
+both files:
+
+```bash
+cd scripts
+npm install   # first time only
+npm run build # writes ../app.js and stamps a fresh cache key into index.html
+```
+
+> 💡 The build tooling deliberately lives in `scripts/` rather than the repo
+> root, so Cloudflare Pages keeps treating the repo as plain static files —
+> no build configuration is needed on the Cloudflare side.
+
 ---
 
 ## Default credentials
@@ -268,7 +285,13 @@ wrangler pages dev . --d1=DB=jarvis-db
 
 ```
 J.A.R.V.I.S./
-├── index.html              # Full PWA frontend (React via CDN)
+├── index.html              # PWA shell (loads the pre-compiled app.js)
+├── app.js                  # Compiled frontend bundle (generated — do not edit)
+├── src/
+│   └── app.jsx             # Frontend source (React JSX) — edit this
+├── scripts/
+│   ├── build.mjs           # Compiles src/app.jsx → app.js + stamps cache key
+│   └── package.json        # Build deps (kept out of repo root on purpose)
 ├── sw.js                   # Service worker (offline caching)
 ├── manifest.json           # PWA manifest
 ├── icon.svg                # App icon

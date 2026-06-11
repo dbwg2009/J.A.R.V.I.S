@@ -1,0 +1,13 @@
+{
+  "name": "jarvis-build",
+  "private": true,
+  "description": "Build tooling for J.A.R.V.I.S. — compiles src/app.jsx to app.js. Lives in scripts/ (not the repo root) so Cloudflare Pages keeps deploying the repo as plain static files.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-react": "^7.26.0"
+  }
+}
