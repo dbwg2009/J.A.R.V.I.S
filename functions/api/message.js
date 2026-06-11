@@ -55,6 +55,11 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_weather',
+    description: 'Get the current weather and today\'s forecast at the user\'s location. Call this when the user asks about the weather, temperature, wind, rain, or conditions outside.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'set_device',
     description: 'Turn a home device on or off. Call this when the user asks to switch the lights, security, climate, or comms array. Known device ids: lights, security, hvac, comms — call list_devices if unsure.',
     input_schema: {
@@ -79,7 +84,10 @@ export async function onRequestPost({ request, env, waitUntil }) {
     return json({ error: 'No LLM API key configured on server. Ask your admin to set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.' }, 503);
   }
 
-  const { messages: rawMessages, web_search, system_prompt } = await request.json();
+  const { messages: rawMessages, web_search, system_prompt, location: rawLocation } = await request.json();
+  const location = (rawLocation && Number.isFinite(rawLocation.lat) && Number.isFinite(rawLocation.lon))
+    ? { lat: rawLocation.lat, lon: rawLocation.lon }
+    : null;
   if (!Array.isArray(rawMessages) || rawMessages.length === 0) return json({ error: 'Messages required' }, 400);
 
   // Keep only valid roles/fields, cap the context, and drop any leading assistant
@@ -113,7 +121,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
       await saveHistory(reply);
       return new Response(reply, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' } });
     }
-    return streamAnthropic({ env, userId: user.user_id, messages, sysPrompt, webSearch: !!web_search, apiKey, waitUntil, saveHistory });
+    return streamAnthropic({ env, userId: user.user_id, messages, sysPrompt, webSearch: !!web_search, apiKey, waitUntil, saveHistory, location });
   } catch (e) {
     return json({ error: `Worker error: ${e.message}` }, 500);
   }
@@ -122,7 +130,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
 // Streams plain-text chunks to the client while running the agentic tool loop:
 // text deltas are forwarded as they arrive; when Claude stops to call a tool we
 // execute it against D1, append the result, and continue the conversation.
-function streamAnthropic({ env, userId, messages, sysPrompt, webSearch, apiKey, waitUntil, saveHistory }) {
+function streamAnthropic({ env, userId, messages, sysPrompt, webSearch, apiKey, waitUntil, saveHistory, location }) {
   const encoder = new TextEncoder();
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -170,7 +178,7 @@ function streamAnthropic({ env, userId, messages, sysPrompt, webSearch, apiKey, 
             results.push({
               type: 'tool_result',
               tool_use_id: tu.id,
-              content: await executeTool(tu.name, tu.input, env, userId),
+              content: await executeTool(tu.name, tu.input, env, userId, location),
             });
           }
           convo = [...convo, { role: 'assistant', content: echoBlocks(content) }, { role: 'user', content: results }];
@@ -256,7 +264,10 @@ function echoBlocks(content) {
       : { type: 'tool_use', id: b.id, name: b.name, input: b.input || {} });
 }
 
-async function executeTool(name, input, env, userId) {
+// WMO weather interpretation codes (Open-Meteo `weather_code`)
+const WMO_DESC = { 0: 'clear skies', 1: 'mainly clear', 2: 'partly cloudy', 3: 'overcast', 45: 'fog', 48: 'freezing fog', 51: 'light drizzle', 53: 'drizzle', 55: 'heavy drizzle', 56: 'freezing drizzle', 57: 'freezing drizzle', 61: 'light rain', 63: 'rain', 65: 'heavy rain', 66: 'freezing rain', 67: 'freezing rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow', 77: 'snow grains', 80: 'rain showers', 81: 'rain showers', 82: 'violent rain showers', 85: 'snow showers', 86: 'snow showers', 95: 'thunderstorm', 96: 'thunderstorm with hail', 99: 'thunderstorm with heavy hail' };
+
+async function executeTool(name, input, env, userId, location) {
   try {
     switch (name) {
       case 'add_task': {
@@ -276,6 +287,23 @@ async function executeTool(name, input, env, userId) {
       case 'delete_task': {
         const r = await env.DB.prepare(`DELETE FROM tasks WHERE id = ? AND user_id = ?`).bind(input.id, userId).run();
         return JSON.stringify(r.meta.changes > 0 ? { ok: true } : { error: 'task not found' });
+      }
+      case 'get_weather': {
+        if (!location) return JSON.stringify({ error: 'Location unavailable — the user has not granted location access in the app (the HOME tab requests it).' });
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1&timezone=auto`);
+        if (!r.ok) return JSON.stringify({ error: `weather service error ${r.status}` });
+        const w = await r.json();
+        const c = w.current || {};
+        return JSON.stringify({
+          conditions: WMO_DESC[c.weather_code] || 'unknown',
+          temperature_c: c.temperature_2m,
+          feels_like_c: c.apparent_temperature,
+          humidity_pct: c.relative_humidity_2m,
+          wind_kmh: c.wind_speed_10m,
+          today_max_c: w.daily?.temperature_2m_max?.[0],
+          today_min_c: w.daily?.temperature_2m_min?.[0],
+          precipitation_chance_pct: w.daily?.precipitation_probability_max?.[0],
+        });
       }
       case 'list_devices':
         return JSON.stringify({ devices: await listDevices(env.DB, userId) });

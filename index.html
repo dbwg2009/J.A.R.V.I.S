@@ -65,6 +65,8 @@ const {useState,useEffect,useRef,useCallback}=React;
 
 const SYS_DEFAULT=`You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), Tony Stark's AI assistant. Highly intelligent, slightly witty, professional. Address user as "sir" or "ma'am". Refined British accent. Always maintain professionalism and a dry sense of humour.`;
 
+const WMO={0:"CLEAR SKIES",1:"MAINLY CLEAR",2:"PARTLY CLOUDY",3:"OVERCAST",45:"FOG",48:"FREEZING FOG",51:"LIGHT DRIZZLE",53:"DRIZZLE",55:"HEAVY DRIZZLE",56:"FREEZING DRIZZLE",57:"FREEZING DRIZZLE",61:"LIGHT RAIN",63:"RAIN",65:"HEAVY RAIN",66:"FREEZING RAIN",67:"FREEZING RAIN",71:"LIGHT SNOW",73:"SNOW",75:"HEAVY SNOW",77:"SNOW GRAINS",80:"SHOWERS",81:"SHOWERS",82:"VIOLENT SHOWERS",85:"SNOW SHOWERS",86:"SNOW SHOWERS",95:"THUNDERSTORM",96:"THUNDERSTORM + HAIL",99:"THUNDERSTORM + HAIL"};
+
 const api = {
   get: (path) => fetch(path, {credentials:'include'}).then(r=>r.json()),
   post: (path, body) => fetch(path, {method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()),
@@ -175,6 +177,8 @@ function App(){
   const [voiceErr,setVoiceErr]=useState("");
   const [convMode,setConvMode]=useState(false);
   const [wakeOn,setWakeOn]=useState(false);
+  const [coords,setCoords]=useState(()=>{try{return JSON.parse(localStorage.getItem("jarvis_coords"))||null;}catch(e){return null;}});
+  const [weather,setWeather]=useState(null);
   const [online,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const [battery,setBattery]=useState(null);
   const [sttOk,setSttOk]=useState(false);
@@ -232,6 +236,38 @@ function App(){
     }
     return s.error?null:{...s,pending:(t.tasks||[]).filter(x=>!x.done).length};
   }
+
+  function requestLocation(){
+    if(!navigator.geolocation)return;
+    navigator.geolocation.getCurrentPosition(p=>{
+      const c={lat:+p.coords.latitude.toFixed(3),lon:+p.coords.longitude.toFixed(3)};
+      setCoords(c);
+      try{localStorage.setItem("jarvis_coords",JSON.stringify(c));}catch(e){}
+    },()=>{},{maximumAge:600000,timeout:8000});
+  }
+
+  async function fetchWeather(c){
+    try{
+      const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto`);
+      if(!r.ok)return;
+      const w=await r.json();
+      setWeather({
+        temp:Math.round(w.current.temperature_2m),
+        desc:WMO[w.current.weather_code]||"UNKNOWN",
+        hum:w.current.relative_humidity_2m,
+        wind:Math.round(w.current.wind_speed_10m),
+        max:Math.round(w.daily.temperature_2m_max[0]),
+        min:Math.round(w.daily.temperature_2m_min[0]),
+        at:Date.now(),
+      });
+    }catch(e){}
+  }
+
+  useEffect(()=>{
+    if(tab!=="home")return;
+    if(!coords){requestLocation();return;}
+    if(!weather||Date.now()-weather.at>10*60*1000)fetchWeather(coords);
+  },[tab,coords]);
 
   // JARVIS can change tasks/devices via tools mid-chat — re-sync after each reply
   async function refreshData(){
@@ -403,7 +439,7 @@ function App(){
     setInput("");setLoading(true);
     try{
       const allMsgs=[...msgs,userMsg].map(m=>({role:m.role,content:m.content}));
-      const res=await fetch("/api/message",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:allMsgs,web_search:webSearch,system_prompt:sysPrompt})});
+      const res=await fetch("/api/message",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:allMsgs,web_search:webSearch,system_prompt:sysPrompt,location:coords||undefined})});
       const ct=res.headers.get("Content-Type")||"";
       if(ct.includes("application/json")){
         const data=await res.json();
@@ -586,7 +622,7 @@ function App(){
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",zIndex:5}}>
         {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:8}}>{msgs.map((m,i)=>(<div key={i} style={{padding:"10px 14px",background:m.role==="user"?"#00d4ff0a":"#00ffaa0a",border:`1px solid ${m.role==="user"?"#00d4ff33":"#00ffaa33"}`,borderRadius:2,animation:"fadeInUp .3s"}}><div style={{fontSize:9,color:m.role==="user"?"#00d4ff":"#00ffaa",letterSpacing:1,marginBottom:4}}>{m.role.toUpperCase()}</div><div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{m.content}</div></div>))}<div ref={endRef}/></div>{voiceErr&&<div style={{padding:"6px 12px",borderTop:"1px solid #ff444433",background:"#ff444411",fontSize:10,color:"#ff4444",letterSpacing:1,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><span>{voiceErr}</span><button onClick={()=>setVoiceErr("")} style={{background:"transparent",border:"none",color:"#ff4444",cursor:"pointer",fontSize:12}}>✕</button></div>}<div style={{padding:"8px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={input} onChange={e=>setInput(e.target.value)} placeholder={listening?"Listening...":"Command..."} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} style={{flex:1}}/><button className="tog" onClick={()=>setConvMode(p=>!p)} disabled={!sttOk} style={{borderColor:convMode?"#ffaa00":"#00d4ff44",color:convMode?"#ffaa00":"#7ab8cc",opacity:sttOk?1:.35,alignSelf:"center"}} title="Conversation mode: JARVIS listens again after each reply">{convMode?"AUTO ✓":"AUTO"}</button><button className={`mic${listening?" listening":""}`} onClick={startListening} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff",opacity:sttOk?1:.35,animation:listening?"micPulse 1.2s infinite":"none"}} title={sttOk?(listening?"Tap to stop":"Tap to speak"):"Speech recognition unavailable in this browser"}>{listening?"🎙️":"🎤"}</button><button className="act green" onClick={()=>send()} disabled={loading||!input.trim()}>{loading?"⏳":"SEND"}</button></div></div>)}
         {tab==="tasks"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>{tasks.map(t=>(<div key={t.id} style={{padding:12,border:`1px solid ${t.done?"#00ffaa33":"#00d4ff33"}`,background:t.done?"#00ffaa0a":"#00d4ff0a",borderRadius:2,display:"flex",alignItems:"center",gap:10}}><input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{width:16,height:16,cursor:"pointer"}}/><span style={{flex:1,textDecoration:t.done?"line-through":"none",opacity:t.done?.6:1}}>{t.text}</span><button className="act red" onClick={()=>deleteTask(t.id)} style={{fontSize:8}}>DEL</button></div>))}</div><div style={{padding:8,borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="Add task..." onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTask();}}} style={{flex:1}}/><button className="act green" onClick={addTask}>ADD</button></div></div>)}
-        {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{padding:16,border:`1px solid ${d.on?"#00ffaa33":"#00d4ff33"}`,background:d.on?"#00ffaa0a":"#00d4ff0a",borderRadius:2,cursor:"pointer",textAlign:"center",transition:"all .2s"}}><div style={{fontSize:24,marginBottom:8}}>{d.icon}</div><div style={{fontSize:11,color:d.on?"#00ffaa":"#7ab8cc",letterSpacing:1}}>{d.label}</div><div style={{fontSize:9,color:d.on?"#00ffaa":"#7ab8cc44",marginTop:4}}>{d.on?"● ON":"○ OFF"}</div></div>))}</div></div>)}
+        {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:12}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:10,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:10}}>ENVIRONMENT</div>{weather?(<div style={{display:"flex",alignItems:"center",gap:18}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:34,fontWeight:900,textShadow:"0 0 12px #00d4ff"}}>{weather.temp}°C</div><div style={{flex:1}}><div style={{fontSize:12,color:"#00ffaa",letterSpacing:1,marginBottom:4}}>{weather.desc}</div><div style={{fontSize:10,color:"#7ab8cc",letterSpacing:1}}>WIND {weather.wind} KM/H · HUMIDITY {weather.hum}% · {weather.min}° / {weather.max}°</div></div></div>):coords?(<div style={{fontSize:10,color:"#7ab8cc",letterSpacing:2,animation:"blink 1.2s infinite"}}>ACQUIRING ATMOSPHERIC DATA...</div>):(<button className="act" onClick={requestLocation} style={{fontSize:9}}>ENABLE ENVIRONMENT DATA</button>)}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{padding:16,border:`1px solid ${d.on?"#00ffaa33":"#00d4ff33"}`,background:d.on?"#00ffaa0a":"#00d4ff0a",borderRadius:2,cursor:"pointer",textAlign:"center",transition:"all .2s"}}><div style={{fontSize:24,marginBottom:8}}>{d.icon}</div><div style={{fontSize:11,color:d.on?"#00ffaa":"#7ab8cc",letterSpacing:1}}>{d.label}</div><div style={{fontSize:9,color:d.on?"#00ffaa":"#7ab8cc44",marginTop:4}}>{d.on?"● ON":"○ OFF"}</div></div>))}</div></div>)}
         {tab==="settings"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>SYSTEM PROMPT</div><textarea value={sysInput} onChange={e=>setSysInput(e.target.value)} style={{width:"100%",height:150,padding:12,background:"#00050f",border:"1px solid #00d4ff33",color:"#00d4ff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,borderRadius:2,resize:"none"}}/><button className="act green" onClick={saveSettings} style={{marginTop:12}}>SAVE SETTINGS</button>{settingsSaved&&<div style={{marginTop:8,fontSize:10,color:"#00ffaa"}}>✓ Settings saved</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>CHANGE PASSWORD</div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>CURRENT PASSWORD</div><input type="password" value={pwChange.current} onChange={e=>setPwChange({...pwChange,current:e.target.value})} placeholder="Current password" autoComplete="current-password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>NEW PASSWORD</div><input type="password" value={pwChange.next} onChange={e=>setPwChange({...pwChange,next:e.target.value})} placeholder="New password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>CONFIRM PASSWORD</div><input type="password" value={pwChange.confirm} onChange={e=>setPwChange({...pwChange,confirm:e.target.value})} placeholder="Confirm password"/></div><button className="act amber" onClick={changePassword} style={{width:"100%"}}>UPDATE PASSWORD</button>{pwMsg&&<div style={{marginTop:8,fontSize:10,color:pwMsg.includes("updated")?"#00ffaa":"#ff4444"}}>{pwMsg}</div>}</div><div style={{marginTop:16,padding:16,border:"1px solid #ff444433",background:"#ff444408",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#ff4444",marginBottom:12}}>DANGER ZONE</div><button className="act red" onClick={clearChatHistory} style={{width:"100%"}}>CLEAR CHAT HISTORY</button></div></div>)}
         {tab==="admin"&&authUser?.role==="admin"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>CREATE USER</div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>USERNAME</div><input value={newUser.username} onChange={e=>setNewUser({...newUser,username:e.target.value})} placeholder="Username"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>PASSWORD</div><input type="password" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} placeholder="Password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>ROLE</div><select value={newUser.role} onChange={e=>setNewUser({...newUser,role:e.target.value})} style={{width:"100%",padding:"10px 12px",background:"#00d4ff0a",border:"1px solid #00d4ff33",color:"#00d4ff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,borderRadius:2}}><option value="user">User</option><option value="admin">Admin</option></select></div><button className="act green" onClick={createUser} style={{width:"100%"}}>CREATE</button>{adminMsg&&<div style={{marginTop:8,fontSize:10,color:adminMsg.includes("Error")?"#ff4444":"#00ffaa"}}>{adminMsg}</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>USERS</div>{adminUsers.map(u=>(<div key={u.id} style={{padding:12,border:"1px solid #00d4ff22",background:"#00050f",borderRadius:2,marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:11,color:"#00d4ff",marginBottom:4}}>{u.username}</div><div style={{fontSize:9,color:u.role==="admin"?"#ffaa00":"#7ab8cc"}}>{u.role.toUpperCase()}</div></div><button className="act red" onClick={()=>deleteUser(u.id)} style={{fontSize:8}}>DELETE</button></div>))}</div></div>)}
       </div>
