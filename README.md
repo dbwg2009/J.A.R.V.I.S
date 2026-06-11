@@ -12,16 +12,20 @@
 
 ## Features
 
-- 🤖 **AI Chat** — Powered by Claude (claude-sonnet-4) via Anthropic OR GPT-4 via OpenRouter. Flexible LLM switching. Your API keys never touch the browser.
-- 🔐 **Multi-user login system** — Session-based authentication with persistent 30-day cookies. Per-user data isolation.
+- 🤖 **AI Chat with streaming** — Powered by Claude (`claude-sonnet-4-6`) via Anthropic OR OpenRouter. Replies stream in token-by-token. Your API keys never touch the browser.
+- 🛠️ **JARVIS can act, not just talk** — Server-side tool use lets it manage your tasks ("Jarvis, remind me to buy milk"), switch home devices ("turn off the lab lights"), and check the weather, all by voice or text.
+- 🎤 **Voice input** — Web Speech API with live interim results and clear error feedback.
+- 🗣️ **Wake word** — Toggle WAKE WORD and just say *"Jarvis"* to start talking, movie-style.
+- 🔁 **Conversation mode** — Toggle AUTO and the mic reopens after each spoken reply for hands-free back-and-forth.
+- 🔊 **Voice output** — Google Cloud Text-to-Speech with a British neural voice (JARVIS-like). Tap the arc reactor to silence him.
+- 🌤️ **Environment panel** — Live local weather on the HOME tab via Open-Meteo (no API key needed).
+- 🔐 **Multi-user login system** — Salted PBKDF2 password hashing, login rate limiting, 30-day sessions, per-user data isolation.
 - 👤 **Admin panel** — Create, manage, and delete user accounts. Promote users to admin. All in-UI.
-- 🗄️ **Cloudflare D1** — All data (chat history, tasks, settings, users, sessions) persisted in a serverless SQLite database at the edge.
-- ✅ **Task manager** — Per-user objective tracking, synced to D1.
-- 🏠 **Home panel** — Simulated smart home device controls.
-- 🎤 **Voice input** — Web Speech API for hands-free commands.
-- 🔊 **Voice output** — Google Cloud Text-to-Speech with British neural voice (JARVIS-like).
+- 🗄️ **Cloudflare D1** — All data (chat history, tasks, devices, settings, users, sessions) persisted in a serverless SQLite database at the edge.
+- ✅ **Task manager** — Per-user objective tracking, synced to D1 (and editable by JARVIS).
+- 🏠 **Home panel** — Smart home device tiles, persisted per-user and controllable by voice.
 - 🌐 **Web search** — Optional live web search via Anthropic's built-in tool.
-- ⚙️ **Per-user settings** — Voice toggle, web search toggle, custom system prompt, LLM provider selection — all saved to D1.
+- ⚙️ **Per-user settings** — Voice toggle, web search toggle, custom system prompt — all saved to D1.
 - 📱 **Installable PWA** — Works offline, installable on mobile and desktop.
 
 ---
@@ -50,9 +54,9 @@ Browser (PWA)
 J.A.R.V.I.S. now supports **multiple LLM providers** for maximum flexibility:
 
 ### Anthropic (Claude)
-- **Model:** `claude-sonnet-4-20250514`
+- **Model:** `claude-sonnet-4-6` by default — override with the `CHAT_MODEL` environment variable
 - **Setup:** Set `ANTHROPIC_API_KEY` as a Cloudflare Worker secret
-- **Features:** Built-in web search support
+- **Features:** Streaming replies, tool use (tasks, devices, weather), built-in web search support
 
 ### OpenRouter
 - **Model:** `openrouter/auto:free` (configurable)
@@ -255,6 +259,7 @@ wrangler pages dev . --d1=DB=jarvis-db
 | `OPENROUTER_API_KEY` | Wrangler secret / Pages dashboard | Your OpenRouter API key (optional if using Anthropic) |
 | `GOOGLE_CLOUD_TTS_API_KEY` | Wrangler secret / Pages dashboard | Your Google Cloud service account private key (optional for voice output) |
 | `PREFER_OPENROUTER` | `wrangler.toml` vars | Set to `"true"` to prefer OpenRouter when both keys available (default: `"false"`) |
+| `CHAT_MODEL` | `wrangler.toml` vars | Anthropic model id for chat (default: `claude-sonnet-4-6`) |
 | `DB` | `wrangler.toml` D1 binding | Auto-configured — do not change |
 
 ---
@@ -280,9 +285,11 @@ J.A.R.V.I.S./
         ├── login.js         # POST /api/login
         ├── logout.js        # POST /api/logout
         ├── me.js            # GET  /api/me
-        ├── message.js       # POST /api/message (LLM proxy with provider routing)
+        ├── message.js       # POST /api/message (streaming LLM proxy + tool use)
         ├── tts.js           # POST /api/tts (Google Cloud Text-to-Speech proxy)
         ├── tasks.js         # GET/POST/PUT/DELETE /api/tasks
+        ├── devices.js       # GET/PUT /api/devices (home devices)
+        ├── _devices.js      # Shared device helpers (lazy table + seed)
         ├── settings.js      # GET/PUT /api/settings
         ├── chat.js          # GET/POST/DELETE /api/chat
         └── users.js         # GET/POST/PUT/DELETE /api/users (admin)
@@ -292,9 +299,11 @@ J.A.R.V.I.S./
 
 ## Security notes
 
-- Passwords are hashed with **SHA-256** before storage in D1.
+- Passwords are hashed with **salted PBKDF2-SHA256 (100k iterations)**; legacy SHA-256 hashes upgrade automatically on the next login.
+- Login is **rate limited**: 5 failed attempts per username/IP within 15 minutes locks the account for 15 minutes.
+- Accounts still using the default password get a persistent warning banner after login.
 - Session tokens are 32-byte cryptographically random hex strings.
-- Sessions expire after **30 days**.
+- Sessions expire after **30 days**; expired sessions are pruned automatically.
 - LLM API keys are stored as **Cloudflare Worker secrets** — never sent to the browser.
 - Google Cloud API keys are stored as **Cloudflare Worker secrets** — never sent to the browser.
 - All cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`.
