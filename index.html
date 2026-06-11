@@ -173,6 +173,9 @@ function App(){
   const [voiceOn,setVoiceOn]=useState(true);
   const [llmProvider,setLlmProvider]=useState("anthropic");
   const [voiceErr,setVoiceErr]=useState("");
+  const [convMode,setConvMode]=useState(false);
+  const [online,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
+  const [battery,setBattery]=useState(null);
   const [sttOk,setSttOk]=useState(false);
   const [drawer,setDrawer]=useState(false);
   const [sysPrompt,setSysPrompt]=useState(SYS_DEFAULT);
@@ -189,6 +192,9 @@ function App(){
   const audioRef=useRef(null);
   const finalRef=useRef("");
   const sendRef=useRef(null);
+  const listenRef=useRef(null);
+  const convRef=useRef(false);
+  convRef.current=convMode;
 
   useEffect(()=>{
     api.get("/api/me").then(data=>{
@@ -245,6 +251,16 @@ function App(){
   }
 
   useEffect(()=>{setSttOk(!!(window.SpeechRecognition||window.webkitSpeechRecognition));},[]);
+  useEffect(()=>{
+    const up=()=>setOnline(true),down=()=>setOnline(false);
+    window.addEventListener("online",up);window.addEventListener("offline",down);
+    return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down);};
+  },[]);
+  useEffect(()=>{
+    let bat,upd;
+    navigator.getBattery?.().then(b=>{bat=b;upd=()=>setBattery(Math.round(b.level*100));upd();b.addEventListener("levelchange",upd);}).catch(()=>{});
+    return()=>{if(bat&&upd)bat.removeEventListener("levelchange",upd);};
+  },[]);
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
   useEffect(()=>{if(loading)setPulse(true);else setTimeout(()=>setPulse(false),500);},[loading]);
@@ -257,7 +273,11 @@ function App(){
       if(data.error)throw new Error(data.error);
       if(!audioRef.current)audioRef.current=new Audio();
       audioRef.current.src=`data:audio/mp3;base64,${data.audioContent}`;
-      audioRef.current.onended=()=>setSpeaking(false);
+      audioRef.current.onended=()=>{
+        setSpeaking(false);
+        // Conversation mode: reopen the mic once JARVIS finishes speaking
+        if(convRef.current&&!document.hidden&&listenRef.current)setTimeout(()=>listenRef.current(),350);
+      };
       audioRef.current.onerror=()=>setSpeaking(false);
       await audioRef.current.play();
     }catch(e){
@@ -265,6 +285,11 @@ function App(){
       setSpeaking(false);
     }
   },[voiceOn]);
+
+  function stopSpeaking(){
+    if(audioRef.current)audioRef.current.pause();
+    setSpeaking(false);
+  }
 
   function startListening(){
     if(listening){recRef.current?.stop();return;}
@@ -304,6 +329,7 @@ function App(){
     recRef.current=rec;
     try{rec.start();}catch(err){setVoiceErr("Could not start voice input, sir.");}
   }
+  listenRef.current=startListening;
 
   async function send(override){
     const text=(override||input).trim();
@@ -420,8 +446,8 @@ function App(){
     setMsgs([{role:"assistant",content:"Chat history cleared, sir. Ready for new directives."}]);
   }
 
-  const statusText=listening?"● LISTENING":speaking?"● SPEAKING":"● SYSTEMS NOMINAL";
-  const statusColor=listening?"#ff4444":speaking?"#00ffaa":"#7ab8cc";
+  const statusText=!online?"● OFFLINE":listening?"● LISTENING":speaking?"● SPEAKING":convMode?"● STANDING BY":"● SYSTEMS NOMINAL";
+  const statusColor=!online?"#ff4444":listening?"#ff4444":speaking?"#00ffaa":convMode?"#ffaa00":"#7ab8cc";
 
   const tabs=["chat","tasks","home","settings"];
   if(authUser?.role==="admin") tabs.push("admin");
@@ -443,7 +469,7 @@ function App(){
 
       <div style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:"#00050fff",borderRight:"1px solid #00d4ff33",zIndex:20,transform:drawer?"translateX(0)":"translateX(-100%)",transition:"transform .3s",overflowY:"auto",padding:16}}>
         <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:3,color:"#00d4ff",borderBottom:"1px solid #00d4ff22",paddingBottom:10}}>SYSTEMS</div>
-        <SBar label="POWER CORE" value={94}/>
+        <SBar label="POWER CORE" value={battery??94} color={battery!==null&&battery<20?"#ff4444":"#00d4ff"}/>
         <SBar label="ARMOR" value={87} color="#00ffaa"/>
         <SBar label="NEURAL LINK" value={100} color="#ffaa00"/>
         <SBar label="THREAT LVL" value={12} color="#ff4444"/>
@@ -472,7 +498,7 @@ function App(){
 
       <div style={{padding:"10px 14px",borderBottom:"1px solid #00d4ff22",display:"flex",alignItems:"center",gap:10,background:"#00050fdd",position:"relative",zIndex:10,flexShrink:0}}>
         <button onClick={()=>setDrawer(p=>!p)} aria-label="Menu" style={{background:"transparent",border:"1px solid #00d4ff33",color:"#00d4ff",width:36,height:36,cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:2,transition:"all .2s"}}>☰</button>
-        <Arc pulse={pulse} listening={listening} speaking={speaking}/>
+        <div onClick={stopSpeaking} style={{cursor:speaking?"pointer":"default"}} title={speaking?"Tap to silence":undefined}><Arc pulse={pulse} listening={listening} speaking={speaking}/></div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontFamily:"'Orbitron',monospace",fontSize:15,fontWeight:900,letterSpacing:3,textShadow:"0 0 12px #00d4ff"}}>J.A.R.V.I.S.</div>
           <div style={{fontSize:8,color:statusColor,letterSpacing:2,marginTop:1}}>{statusText}</div>
@@ -490,7 +516,7 @@ function App(){
       </div>
 
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",zIndex:5}}>
-        {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:8}}>{msgs.map((m,i)=>(<div key={i} style={{padding:"10px 14px",background:m.role==="user"?"#00d4ff0a":"#00ffaa0a",border:`1px solid ${m.role==="user"?"#00d4ff33":"#00ffaa33"}`,borderRadius:2,animation:"fadeInUp .3s"}}><div style={{fontSize:9,color:m.role==="user"?"#00d4ff":"#00ffaa",letterSpacing:1,marginBottom:4}}>{m.role.toUpperCase()}</div><div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{m.content}</div></div>))}<div ref={endRef}/></div>{voiceErr&&<div style={{padding:"6px 12px",borderTop:"1px solid #ff444433",background:"#ff444411",fontSize:10,color:"#ff4444",letterSpacing:1,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><span>{voiceErr}</span><button onClick={()=>setVoiceErr("")} style={{background:"transparent",border:"none",color:"#ff4444",cursor:"pointer",fontSize:12}}>✕</button></div>}<div style={{padding:"8px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={input} onChange={e=>setInput(e.target.value)} placeholder={listening?"Listening...":"Command..."} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} style={{flex:1}}/><button className={`mic${listening?" listening":""}`} onClick={startListening} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff",opacity:sttOk?1:.35,animation:listening?"micPulse 1.2s infinite":"none"}} title={sttOk?(listening?"Tap to stop":"Tap to speak"):"Speech recognition unavailable in this browser"}>{listening?"🎙️":"🎤"}</button><button className="act green" onClick={()=>send()} disabled={loading||!input.trim()}>{loading?"⏳":"SEND"}</button></div></div>)}
+        {tab==="chat"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:"12px 12px",display:"flex",flexDirection:"column",gap:8}}>{msgs.map((m,i)=>(<div key={i} style={{padding:"10px 14px",background:m.role==="user"?"#00d4ff0a":"#00ffaa0a",border:`1px solid ${m.role==="user"?"#00d4ff33":"#00ffaa33"}`,borderRadius:2,animation:"fadeInUp .3s"}}><div style={{fontSize:9,color:m.role==="user"?"#00d4ff":"#00ffaa",letterSpacing:1,marginBottom:4}}>{m.role.toUpperCase()}</div><div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{m.content}</div></div>))}<div ref={endRef}/></div>{voiceErr&&<div style={{padding:"6px 12px",borderTop:"1px solid #ff444433",background:"#ff444411",fontSize:10,color:"#ff4444",letterSpacing:1,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><span>{voiceErr}</span><button onClick={()=>setVoiceErr("")} style={{background:"transparent",border:"none",color:"#ff4444",cursor:"pointer",fontSize:12}}>✕</button></div>}<div style={{padding:"8px 12px",borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={input} onChange={e=>setInput(e.target.value)} placeholder={listening?"Listening...":"Command..."} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} style={{flex:1}}/><button className="tog" onClick={()=>setConvMode(p=>!p)} disabled={!sttOk} style={{borderColor:convMode?"#ffaa00":"#00d4ff44",color:convMode?"#ffaa00":"#7ab8cc",opacity:sttOk?1:.35,alignSelf:"center"}} title="Conversation mode: JARVIS listens again after each reply">{convMode?"AUTO ✓":"AUTO"}</button><button className={`mic${listening?" listening":""}`} onClick={startListening} style={{borderColor:listening?"#ff4444":"#00d4ff44",color:listening?"#ff4444":"#00d4ff",opacity:sttOk?1:.35,animation:listening?"micPulse 1.2s infinite":"none"}} title={sttOk?(listening?"Tap to stop":"Tap to speak"):"Speech recognition unavailable in this browser"}>{listening?"🎙️":"🎤"}</button><button className="act green" onClick={()=>send()} disabled={loading||!input.trim()}>{loading?"⏳":"SEND"}</button></div></div>)}
         {tab==="tasks"&&(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>{tasks.map(t=>(<div key={t.id} style={{padding:12,border:`1px solid ${t.done?"#00ffaa33":"#00d4ff33"}`,background:t.done?"#00ffaa0a":"#00d4ff0a",borderRadius:2,display:"flex",alignItems:"center",gap:10}}><input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{width:16,height:16,cursor:"pointer"}}/><span style={{flex:1,textDecoration:t.done?"line-through":"none",opacity:t.done?.6:1}}>{t.text}</span><button className="act red" onClick={()=>deleteTask(t.id)} style={{fontSize:8}}>DEL</button></div>))}</div><div style={{padding:8,borderTop:"1px solid #00d4ff22",display:"flex",gap:8,background:"#00050fcc",flexShrink:0}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="Add task..." onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTask();}}} style={{flex:1}}/><button className="act green" onClick={addTask}>ADD</button></div></div>)}
         {tab==="home"&&(<div style={{flex:1,overflowY:"auto",padding:12}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>{devs.map(d=>(<div key={d.id} onClick={()=>toggleDev(d.id)} style={{padding:16,border:`1px solid ${d.on?"#00ffaa33":"#00d4ff33"}`,background:d.on?"#00ffaa0a":"#00d4ff0a",borderRadius:2,cursor:"pointer",textAlign:"center",transition:"all .2s"}}><div style={{fontSize:24,marginBottom:8}}>{d.icon}</div><div style={{fontSize:11,color:d.on?"#00ffaa":"#7ab8cc",letterSpacing:1}}>{d.label}</div><div style={{fontSize:9,color:d.on?"#00ffaa":"#7ab8cc44",marginTop:4}}>{d.on?"● ON":"○ OFF"}</div></div>))}</div></div>)}
         {tab==="settings"&&(<div style={{flex:1,overflowY:"auto",padding:16}}><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4,marginBottom:16}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>SYSTEM PROMPT</div><textarea value={sysInput} onChange={e=>setSysInput(e.target.value)} style={{width:"100%",height:150,padding:12,background:"#00050f",border:"1px solid #00d4ff33",color:"#00d4ff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,borderRadius:2,resize:"none"}}/><button className="act green" onClick={saveSettings} style={{marginTop:12}}>SAVE SETTINGS</button>{settingsSaved&&<div style={{marginTop:8,fontSize:10,color:"#00ffaa"}}>✓ Settings saved</div>}</div><div style={{padding:16,border:"1px solid #00d4ff22",background:"#001a2d",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#00d4ff",marginBottom:16}}>CHANGE PASSWORD</div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>CURRENT PASSWORD</div><input type="password" value={pwChange.current} onChange={e=>setPwChange({...pwChange,current:e.target.value})} placeholder="Current password" autoComplete="current-password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>NEW PASSWORD</div><input type="password" value={pwChange.next} onChange={e=>setPwChange({...pwChange,next:e.target.value})} placeholder="New password"/></div><div style={{marginBottom:12}}><div style={{fontSize:9,color:"#7ab8cc",marginBottom:6,letterSpacing:1}}>CONFIRM PASSWORD</div><input type="password" value={pwChange.confirm} onChange={e=>setPwChange({...pwChange,confirm:e.target.value})} placeholder="Confirm password"/></div><button className="act amber" onClick={changePassword} style={{width:"100%"}}>UPDATE PASSWORD</button>{pwMsg&&<div style={{marginTop:8,fontSize:10,color:pwMsg.includes("updated")?"#00ffaa":"#ff4444"}}>{pwMsg}</div>}</div><div style={{marginTop:16,padding:16,border:"1px solid #ff444433",background:"#ff444408",borderRadius:4}}><div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,color:"#ff4444",marginBottom:12}}>DANGER ZONE</div><button className="act red" onClick={clearChatHistory} style={{width:"100%"}}>CLEAR CHAT HISTORY</button></div></div>)}
