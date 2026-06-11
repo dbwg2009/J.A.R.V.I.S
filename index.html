@@ -174,6 +174,7 @@ function App(){
   const [llmProvider,setLlmProvider]=useState("anthropic");
   const [voiceErr,setVoiceErr]=useState("");
   const [convMode,setConvMode]=useState(false);
+  const [wakeOn,setWakeOn]=useState(false);
   const [online,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const [battery,setBattery]=useState(null);
   const [sttOk,setSttOk]=useState(false);
@@ -195,6 +196,12 @@ function App(){
   const listenRef=useRef(null);
   const convRef=useRef(false);
   convRef.current=convMode;
+  const wakeRecRef=useRef(null);
+  const wakeActiveRef=useRef(false);
+  const speakingRef=useRef(false);
+  speakingRef.current=speaking;
+  const listeningRef=useRef(false);
+  listeningRef.current=listening;
 
   useEffect(()=>{
     api.get("/api/me").then(data=>{
@@ -291,11 +298,66 @@ function App(){
     setSpeaking(false);
   }
 
+  function chime(){
+    try{
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.frequency.value=880;
+      g.gain.setValueAtTime(.08,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.25);
+      o.start();o.stop(ctx.currentTime+.25);
+    }catch(e){}
+  }
+
+  // Wake word: a continuous background listener that opens the mic when it
+  // hears "Jarvis". Paused (via guards) while JARVIS is speaking or listening.
+  function startWake(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR||wakeRecRef.current)return;
+    const rec=new SR();
+    rec.continuous=true;rec.interimResults=true;rec.lang="en-GB";
+    rec.onresult=(e)=>{
+      if(speakingRef.current||listeningRef.current)return;
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i][0].transcript.toLowerCase().includes("jarvis")){
+          stopWake();
+          chime();
+          setTimeout(()=>listenRef.current&&listenRef.current(),250);
+          return;
+        }
+      }
+    };
+    rec.onend=()=>{
+      wakeRecRef.current=null;
+      if(wakeActiveRef.current&&!listeningRef.current)setTimeout(startWake,400);
+    };
+    rec.onerror=(e)=>{
+      if(e.error==="not-allowed"||e.error==="service-not-allowed"){
+        wakeActiveRef.current=false;setWakeOn(false);
+        setVoiceErr("Microphone permission is required for the wake word, sir.");
+      }
+    };
+    wakeRecRef.current=rec;
+    try{rec.start();}catch(e){}
+  }
+  function stopWake(){
+    const r=wakeRecRef.current;
+    wakeRecRef.current=null;
+    if(r){r.onend=null;try{r.stop();}catch(e){}}
+  }
+  useEffect(()=>{
+    wakeActiveRef.current=wakeOn;
+    if(wakeOn)startWake();else stopWake();
+    return stopWake;
+  },[wakeOn]);
+
   function startListening(){
     if(listening){recRef.current?.stop();return;}
     if(loading){setVoiceErr("One moment, sir — still processing the previous request.");return;}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){setVoiceErr("Speech recognition is not supported in this browser, sir. Try Chrome, Edge or Safari.");return;}
+    stopWake();
     if(audioRef.current){audioRef.current.pause();setSpeaking(false);}
     const rec=new SR();
     rec.continuous=false;rec.interimResults=true;rec.lang="en-GB";rec.maxAlternatives=1;
@@ -309,6 +371,7 @@ function App(){
     };
     rec.onend=()=>{
       setListening(false);
+      if(wakeActiveRef.current)setTimeout(startWake,500);
       const t=finalRef.current;
       finalRef.current="";
       if(t)sendRef.current(t);
@@ -316,6 +379,7 @@ function App(){
     rec.onerror=(e)=>{
       setListening(false);
       finalRef.current="";
+      if(wakeActiveRef.current)setTimeout(startWake,500);
       if(e.error==="aborted")return;
       const errs={
         "not-allowed":"Microphone access denied, sir. Please allow microphone permission in your browser settings.",
@@ -446,8 +510,8 @@ function App(){
     setMsgs([{role:"assistant",content:"Chat history cleared, sir. Ready for new directives."}]);
   }
 
-  const statusText=!online?"● OFFLINE":listening?"● LISTENING":speaking?"● SPEAKING":convMode?"● STANDING BY":"● SYSTEMS NOMINAL";
-  const statusColor=!online?"#ff4444":listening?"#ff4444":speaking?"#00ffaa":convMode?"#ffaa00":"#7ab8cc";
+  const statusText=!online?"● OFFLINE":listening?"● LISTENING":speaking?"● SPEAKING":wakeOn?"● AWAITING \"JARVIS\"":convMode?"● STANDING BY":"● SYSTEMS NOMINAL";
+  const statusColor=!online?"#ff4444":listening?"#ff4444":speaking?"#00ffaa":(wakeOn||convMode)?"#ffaa00":"#7ab8cc";
 
   const tabs=["chat","tasks","home","settings"];
   if(authUser?.role==="admin") tabs.push("admin");
@@ -485,9 +549,13 @@ function App(){
             <span style={{fontSize:11,color:webSearch?"#00ffaa":"#7ab8cc"}}>WEB SEARCH</span>
             <button className="tog" onClick={()=>updatePrefs({web_search:!webSearch})} style={{borderColor:webSearch?"#00ffaa":"#00d4ff44",color:webSearch?"#00ffaa":"#7ab8cc"}}>{webSearch?"ON":"OFF"}</button>
           </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <span style={{fontSize:11,color:voiceOn?"#ffaa00":"#7ab8cc"}}>VOICE OUT</span>
             <button className="tog" onClick={()=>updatePrefs({voice_on:!voiceOn})} style={{borderColor:voiceOn?"#ffaa00":"#00d4ff44",color:voiceOn?"#ffaa00":"#7ab8cc"}}>{voiceOn?"ON":"OFF"}</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:wakeOn?"#00ffaa":"#7ab8cc"}} title='Say "Jarvis" to start talking'>WAKE WORD</span>
+            <button className="tog" onClick={()=>setWakeOn(p=>!p)} disabled={!sttOk} style={{borderColor:wakeOn?"#00ffaa":"#00d4ff44",color:wakeOn?"#00ffaa":"#7ab8cc",opacity:sttOk?1:.35}}>{wakeOn?"ON":"OFF"}</button>
           </div>
         </div>
         <div style={{marginTop:"auto",borderTop:"1px solid #00d4ff22",paddingTop:10}}>

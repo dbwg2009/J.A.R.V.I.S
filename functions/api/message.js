@@ -94,7 +94,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
     return json({ error: 'Conversation must end with a user message' }, 400);
   }
 
-  const sysPrompt = (system_prompt || SYS_DEFAULT) + SYS_CAPABILITIES;
+  const sysPrompt = (system_prompt || SYS_DEFAULT) + SYS_CAPABILITIES
+    + `\n\nCurrent date and time (UTC): ${new Date().toUTCString()}.`;
   const useOpenRouter = !apiKey || (env.PREFER_OPENROUTER === 'true');
   const lastUser = messages[messages.length - 1];
 
