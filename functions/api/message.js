@@ -184,11 +184,10 @@ function streamAnthropic({ env, userId, messages, sysPrompt, webSearch, apiKey, 
           convo = [...convo, { role: 'assistant', content: echoBlocks(content) }, { role: 'user', content: results }];
           continue;
         }
-        if (stopReason === 'pause_turn') {
-          // Server-side tool (web search) hit its iteration limit — resend to resume.
-          convo = [...convo, { role: 'assistant', content: echoBlocks(content) }];
-          continue;
-        }
+        // pause_turn (server-side web search hitting its iteration limit) is
+        // effectively unreachable with max_uses: 3; resuming would require
+        // echoing server-tool blocks we don't fully reconstruct, so end the
+        // turn — the streamed text has already been delivered.
         break;
       }
     } catch (e) {
